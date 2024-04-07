@@ -6,6 +6,7 @@ mod types;
 use dotenv::dotenv;
 use std::env;
 
+use crate::types::ChainId;
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
@@ -21,6 +22,7 @@ pub struct ReadConfig {
 pub struct AppState {
     pub redis_client: redis::Client,
     pub read_config: ReadConfig,
+    pub chain_id: ChainId,
 }
 
 async fn greet() -> impl Responder {
@@ -37,6 +39,9 @@ async fn main() -> std::io::Result<()> {
         // .with_env_filter(EnvFilter::new("debug"))
         .with_writer(std::io::stderr)
         .init();
+
+    let chain_id = ChainId::try_from(env::var("CHAIN_ID").expect("Missing CHAIN_ID env var"))
+        .expect("Failed to parse CHAIN_ID");
 
     let redis_client =
         redis::Client::open(env::var("REDIS_URL").expect("Missing REDIS_URL env var"))
@@ -68,6 +73,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(AppState {
                 redis_client: redis_client.clone(),
                 read_config: read_config.clone(),
+                chain_id,
             }))
             .wrap(cors)
             .wrap(middleware::Logger::new(

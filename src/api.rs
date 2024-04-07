@@ -1,3 +1,4 @@
+use crate::cache::set_multiple_blocks_async;
 use crate::reader::read_blocks;
 use crate::types::*;
 use crate::*;
@@ -32,21 +33,13 @@ impl ResponseError for ServiceError {
 
 pub mod v0 {
     use super::*;
-    use crate::cache::set_multiple_blocks_async;
 
-    #[get("/{chain_id}/block/{block_height}")]
+    #[get("/block/{block_height}")]
     pub async fn get_block(
         request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
-        let chain_id = ChainId::try_from(request.match_info().get("chain_id").unwrap().to_string())
-            .map_err(|_| ServiceError::ArgumentError)?;
-        if chain_id != ChainId::Mainnet {
-            return Ok(HttpResponse::NotFound().json(json!({
-                "error": "Only mainnet is available right now",
-                "type": "CHAIN_NOT_SUPPORTED"
-            })));
-        }
+        let chain_id = app_state.chain_id;
         let block_height = request
             .match_info()
             .get("block_height")
@@ -60,7 +53,7 @@ pub mod v0 {
             })));
         }
 
-        tracing::debug!(target: TARGET_API, "Retrieving block for chain_id: {:?}, block_height: {}", chain_id, block_height);
+        tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
 
         let mut block =
             match cache::get_block(app_state.redis_client.clone(), chain_id, block_height).await {
