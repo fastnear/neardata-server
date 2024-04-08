@@ -5,10 +5,13 @@ use crate::*;
 use actix_web::ResponseError;
 use serde_json::json;
 use std::fmt;
+use std::time::Duration;
 
 const TARGET_API: &str = "api";
 const MAX_BLOCK_HEIGHT: BlockHeight = 10u64.pow(15);
 const EXPECTED_CACHED_BLOCKS: BlockHeight = 10;
+// 1 year cache for blocks. Blocks don't change.
+const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 #[derive(Debug)]
 enum ServiceError {
@@ -89,11 +92,18 @@ pub mod v0 {
                 }
             };
 
+        let mut cache_duration = DEFAULT_CACHE_DURATION;
         if block.is_empty() {
             block = "null".to_string();
+            // Temporary avoid caching empty blocks
+            cache_duration = Duration::from_secs(60);
         }
         Ok(HttpResponse::Ok()
             .append_header((header::CONTENT_TYPE, "application/json; charset=utf-8"))
+            .append_header((
+                header::CACHE_CONTROL,
+                format!("public, max-age={}", cache_duration.as_secs()),
+            ))
             .body(block))
     }
 }
