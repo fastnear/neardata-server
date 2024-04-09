@@ -20,6 +20,12 @@ enum ServiceError {
     CacheError(String),
 }
 
+impl From<redis::RedisError> for ServiceError {
+    fn from(_err: redis::RedisError) -> Self {
+        ServiceError::CacheError("Redis error".to_string())
+    }
+}
+
 impl fmt::Display for ServiceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -42,6 +48,7 @@ impl ResponseError for ServiceError {
 
 pub mod v0 {
     use super::*;
+    use crate::api::ServiceError::CacheError;
 
     #[get("/last_block/final")]
     pub async fn get_last_block_final(
@@ -62,56 +69,6 @@ pub mod v0 {
                 })?;
         Ok(HttpResponse::Found()
             .append_header((header::LOCATION, format!("/v0/block/{}", last_block_height)))
-            .finish())
-    }
-
-    #[get("/next_block/{block_height}")]
-    pub async fn get_next_block(
-        request: HttpRequest,
-        app_state: web::Data<AppState>,
-    ) -> Result<impl Responder, ServiceError> {
-        let chain_id = app_state.chain_id;
-        let block_height = request
-            .match_info()
-            .get("block_height")
-            .unwrap()
-            .parse::<BlockHeight>()
-            .map_err(|_| ServiceError::ArgumentError)?;
-        if block_height > MAX_BLOCK_HEIGHT {
-            return Ok(HttpResponse::NotFound().json(json!({
-                "error": "Block height is too high",
-                "type": "BLOCK_HEIGHT_TOO_HIGH"
-            })));
-        }
-        let next_block_height = block_height + 1;
-
-        tracing::debug!(target: TARGET_API, "Retrieving the next block for block_height: {}", block_height);
-
-        loop {
-            let last_block_height =
-                cache::get_last_block_height(app_state.redis_client.clone(), chain_id)
-                    .await
-                    .ok_or_else(|| {
-                        ServiceError::CacheError(
-                            "The last block height is missing from the cache".to_string(),
-                        )
-                    })?;
-            if next_block_height > last_block_height + MAX_WAIT_BLOCKS {
-                return Ok(HttpResponse::NotFound().json(json!({
-                    "error": "The block is too far in the future",
-                    "type": "BLOCK_DOES_NOT_EXIST"
-                })));
-            }
-            if next_block_height <= last_block_height {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(
-                100 + 1000 * (next_block_height - last_block_height - 1),
-            ))
-            .await;
-        }
-        Ok(HttpResponse::Found()
-            .append_header((header::LOCATION, format!("/v0/block/{}", next_block_height)))
             .finish())
     }
 
@@ -136,22 +93,39 @@ pub mod v0 {
 
         tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
 
-        let mut block =
-            match cache::get_block(app_state.redis_client.clone(), chain_id, block_height).await {
-                Some(block) => block,
-                None => {
+        let mut block = loop {
+            match cache::get_block_and_last_block_height(
+                app_state.redis_client.clone(),
+                chain_id,
+                block_height,
+            )
+            .await?
+            {
+                (Some(block), _) => break block,
+                (_, None) => {
+                    return Err(ServiceError::CacheError(
+                        "The last block height is missing from the cache".to_string(),
+                    ));
+                }
+                (None, Some(last_block_height)) => {
                     // Not cached
+                    if block_height > last_block_height + MAX_WAIT_BLOCKS {
+                        return Ok(HttpResponse::NotFound().json(json!({
+                            "error": "The block is too far in the future",
+                            "type": "BLOCK_DOES_NOT_EXIST"
+                        })));
+                    }
 
-                    // Trying to check last block
-                    if let Some(last_block_height) =
-                        cache::get_last_block_height(app_state.redis_client.clone(), chain_id).await
-                    {
-                        if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
-                            return Ok(HttpResponse::NotFound().json(json!({
-                                "error": "Block doesn't exist yet",
-                                "type": "BLOCK_DOES_NOT_EXIST"
-                            })));
-                        }
+                    if block_height > last_block_height {
+                        tokio::time::sleep(Duration::from_millis(
+                            100 + 1000 * (block_height - last_block_height - 1),
+                        ))
+                        .await;
+                        continue;
+                    }
+
+                    if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
+                        return Err(CacheError("The block is not cached".to_string()));
                     }
 
                     let blocks = read_blocks(&app_state.read_config, chain_id, block_height);
@@ -166,9 +140,10 @@ pub mod v0 {
                         })
                         .unwrap();
                     set_multiple_blocks_async(app_state.redis_client.clone(), chain_id, blocks);
-                    block
+                    break block;
                 }
             };
+        };
 
         let mut cache_duration = DEFAULT_CACHE_DURATION;
         if block.is_empty() {

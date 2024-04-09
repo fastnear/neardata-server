@@ -70,7 +70,6 @@ async fn main() -> std::io::Result<()> {
 
         let api_v0 = web::scope("/v0")
             .service(api::v0::get_block)
-            .service(api::v0::get_next_block)
             .service(api::v0::get_last_block_final);
         App::new()
             .app_data(web::Data::new(AppState {

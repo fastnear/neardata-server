@@ -26,21 +26,24 @@ pub(crate) async fn get_last_block_height(
         .ok()
 }
 
-pub(crate) async fn get_block(
+pub(crate) async fn get_block_and_last_block_height(
     redis_client: redis::Client,
     chain_id: ChainId,
     block_height: BlockHeight,
-) -> Option<String> {
+) -> redis::RedisResult<(Option<String>, Option<BlockHeight>)> {
     let mut connection = redis_client
         .get_multiplexed_async_connection_with_timeouts(READ_TIMEOUT, READ_TIMEOUT)
-        .await
-        .ok()?;
-    let key = block_key(chain_id, block_height);
-    redis::cmd("GET")
-        .arg(&key)
+        .await?;
+
+    let res: (Option<String>, Option<String>) = redis::pipe()
+        .cmd("GET")
+        .arg(block_key(chain_id, block_height))
+        .cmd("GET")
+        .arg(format!("meta:{}:last_block", chain_id))
         .query_async(&mut connection)
-        .await
-        .ok()
+        .await?;
+
+    Ok((res.0, res.1.map(|s| s.parse().unwrap())))
 }
 
 #[allow(dead_code)]
