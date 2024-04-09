@@ -68,7 +68,10 @@ async fn main() -> std::io::Result<()> {
             .max_age(3600)
             .supports_credentials();
 
-        let api_v0 = web::scope("/v0").service(api::v0::get_block);
+        let api_v0 = web::scope("/v0")
+            .service(api::v0::get_block)
+            .service(api::v0::get_next_block)
+            .service(api::v0::get_last_block_final);
         App::new()
             .app_data(web::Data::new(AppState {
                 redis_client: redis_client.clone(),

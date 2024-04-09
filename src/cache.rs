@@ -1,7 +1,7 @@
 use crate::types::*;
 
-const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(50);
-const WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+const WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1000);
 const CACHE_EXPIRATION: std::time::Duration = std::time::Duration::from_secs(60);
 
 const TARGET: &str = "cache";
