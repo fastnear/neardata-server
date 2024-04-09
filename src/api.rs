@@ -90,6 +90,12 @@ pub mod v0 {
                 "type": "BLOCK_HEIGHT_TOO_HIGH"
             })));
         }
+        if block_height < app_state.genesis_block_height {
+            return Ok(HttpResponse::NotFound().json(json!({
+                "error": "Block height is before the genesis",
+                "type": "BLOCK_HEIGHT_TOO_LOW"
+            })));
+        }
 
         tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
 

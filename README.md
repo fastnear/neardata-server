@@ -27,7 +27,7 @@ We use caching to reduce the load on the server and improve the response time, b
 the latest data.
 
 To index historical, you may read data in a sequential manner, starting from the block you need or from the genesis
-block (`9820226` for mainnet) and moving forward up to the final block.
+block (`9820210` for mainnet) and moving forward up to the final block.
 
 If you want to subscribe to the latest data, start from the latest finalized block and poll the server for the new
 blocks incrementing the block height by one, making sure you wait for the response.
@@ -42,6 +42,7 @@ Returns the block by block height.
 
 Example:
 
+- Genesis block (mainnet) https://mainnet.neardata.xyz/v0/block/9820210
 - Regular block (mainnet) https://mainnet.neardata.xyz/v0/block/98765432
 - Missing block (mainnet) https://mainnet.neardata.xyz/v0/block/115001861
 - Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000

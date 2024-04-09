@@ -6,7 +6,7 @@ mod types;
 use dotenv::dotenv;
 use std::env;
 
-use crate::types::ChainId;
+use crate::types::{BlockHeight, ChainId};
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
@@ -23,6 +23,7 @@ pub struct AppState {
     pub redis_client: redis::Client,
     pub read_config: ReadConfig,
     pub chain_id: ChainId,
+    pub genesis_block_height: BlockHeight,
 }
 
 async fn greet() -> impl Responder {
@@ -55,6 +56,11 @@ async fn main() -> std::io::Result<()> {
             .expect("Failed to parse SAVE_EVERY_N"),
     };
 
+    let genesis_block_height = env::var("GENESIS_BLOCK_HEIGHT")
+        .expect("Missing GENESIS_BLOCK_HEIGHT env var")
+        .parse()
+        .expect("Failed to parse GENESIS_BLOCK_HEIGHT");
+
     HttpServer::new(move || {
         // Configure CORS middleware
         let cors = Cors::default()
@@ -76,6 +82,7 @@ async fn main() -> std::io::Result<()> {
                 redis_client: redis_client.clone(),
                 read_config: read_config.clone(),
                 chain_id,
+                genesis_block_height,
             }))
             .wrap(cors)
             .wrap(middleware::Logger::new(
