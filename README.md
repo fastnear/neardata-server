@@ -39,6 +39,9 @@ Returns the block by block height.
 - If the block doesn't exist it return `null`.
 - If the block is not produced yet, but close to the current finalized block, the server will wait for the block to be
   produced and return it.
+- The difference from NEAR Lake data is each block is served as a single JSON object, instead of the block and shards.
+  Another benefit, is we include the `tx_hash` for every receipt in the `receipt_execution_outcomes`. The `tx_hash` is
+  the hash of the transaction that produced the receipt.
 
 Example:
 
