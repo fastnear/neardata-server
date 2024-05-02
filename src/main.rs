@@ -75,6 +75,7 @@ async fn main() -> std::io::Result<()> {
             .supports_credentials();
 
         let api_v0 = web::scope("/v0")
+            .service(api::v0::get_first_block)
             .service(api::v0::get_block)
             .service(api::v0::get_last_block_final);
         App::new()

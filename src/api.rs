@@ -48,7 +48,6 @@ impl ResponseError for ServiceError {
 
 pub mod v0 {
     use super::*;
-    use crate::api::ServiceError::CacheError;
 
     #[get("/last_block/final")]
     pub async fn get_last_block_final(
@@ -72,6 +71,23 @@ pub mod v0 {
             .finish())
     }
 
+    #[get("/first_block")]
+    pub async fn get_first_block(
+        _request: HttpRequest,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        Ok(HttpResponse::Found()
+            .append_header((
+                header::CACHE_CONTROL,
+                format!("public, max-age={}", 24 * 60 * 60),
+            ))
+            .append_header((
+                header::LOCATION,
+                format!("/v0/block/{}", app_state.genesis_block_height),
+            ))
+            .finish())
+    }
+
     #[get("/block/{block_height}")]
     pub async fn get_block(
         request: HttpRequest,
@@ -85,16 +101,26 @@ pub mod v0 {
             .parse::<BlockHeight>()
             .map_err(|_| ServiceError::ArgumentError)?;
         if block_height > MAX_BLOCK_HEIGHT {
-            return Ok(HttpResponse::NotFound().json(json!({
-                "error": "Block height is too high",
-                "type": "BLOCK_HEIGHT_TOO_HIGH"
-            })));
+            return Ok(HttpResponse::NotFound()
+                .append_header((
+                    header::CACHE_CONTROL,
+                    format!("public, max-age={}", 24 * 60 * 60),
+                ))
+                .json(json!({
+                    "error": "Block height is too high",
+                    "type": "BLOCK_HEIGHT_TOO_HIGH"
+                })));
         }
         if block_height < app_state.genesis_block_height {
-            return Ok(HttpResponse::NotFound().json(json!({
-                "error": "Block height is before the genesis",
-                "type": "BLOCK_HEIGHT_TOO_LOW"
-            })));
+            return Ok(HttpResponse::NotFound()
+                .append_header((
+                    header::CACHE_CONTROL,
+                    format!("public, max-age={}", 24 * 60 * 60),
+                ))
+                .json(json!({
+                    "error": "Block height is before the genesis",
+                    "type": "BLOCK_HEIGHT_TOO_LOW"
+                })));
         }
 
         tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
@@ -131,7 +157,9 @@ pub mod v0 {
                     }
 
                     if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
-                        return Err(CacheError("The block is not cached".to_string()));
+                        return Err(ServiceError::CacheError(
+                            "The block is not cached".to_string(),
+                        ));
                     }
 
                     let blocks = read_blocks(&app_state.read_config, chain_id, block_height);

@@ -16,6 +16,7 @@ FASTNEAR provides servers for both mainnet and testnet:
 
 The server provides the following endpoints:
 
+- `/v0/first_block` - Redirects to the first block after genesis.
 - `/v0/block/:block_height` - Get block by the block height in a JSON format.
 - `/v0/last_block/final` - Redirects to the latest finalized block.
 
@@ -31,6 +32,17 @@ block (`9820210` for mainnet) and moving forward up to the final block.
 
 If you want to subscribe to the latest data, start from the latest finalized block and poll the server for the new
 blocks incrementing the block height by one, making sure you wait for the response.
+
+#### `/v0/first_block`
+
+Redirects to the first block after genesis.
+
+The block is guaranteed to exist and will be returned immediately.
+
+Example:
+
+- Mainnet: https://mainnet.neardata.xyz/v0/first_block
+- Testnet: https://testnet.neardata.xyz/v0/first_block
 
 #### `/v0/block/:block_height`
 
