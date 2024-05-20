@@ -74,3 +74,34 @@ Example:
 - Testnet: https://testnet.neardata.xyz/v0/last_block/final
 
 
+## Running locally
+
+The server is built with Rust and uses the Actix Web framework.
+
+To run the server locally, you need to have Rust installed. You can install Rust by running the following command:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+After installing Rust, you can clone the repository and run the server:
+
+```shell
+PORT=8080 \
+CHAIN_ID=mainnet \
+REDIS_URL=redis://localhost:6379 \
+READ_PATH=./data \
+SAVE_EVERY_N=1000 \
+GENESIS_BLOCK_HEIGHT=9820210 \
+cargo run
+```
+
+### Environment variables
+
+- `PORT` - The port the server will listen on.
+- `CHAIN_ID` - The chain ID, either `mainnet` or `testnet`.
+- `REDIS_URL` - The Redis URL for caching.
+- `READ_PATH` - The path to the directory with the block files.
+- `SAVE_EVERY_N` - The number of blocks to save in the cache before saving to the disk.
+- `GENESIS_BLOCK_HEIGHT` - The block height of the genesis block.
+
