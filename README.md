@@ -48,7 +48,7 @@ Example:
 
 Returns the block by block height.
 
-- If the block doesn't exist it return `null`.
+- If the block doesn't exist it returns `null`.
 - If the block is not produced yet, but close to the current finalized block, the server will wait for the block to be
   produced and return it.
 - The difference from NEAR Lake data is each block is served as a single JSON object, instead of the block and shards.
