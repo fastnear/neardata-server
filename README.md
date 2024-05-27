@@ -10,7 +10,7 @@ available [NEAR Lake Framework](https://github.com/near/near-lake-framework-rs) 
 FASTNEAR provides servers for both mainnet and testnet:
 
 - Mainnet: [https://mainnet.neardata.xyz](https://mainnet.neardata.xyz)
-- Testnet (STILL CATCHING UP, NOT READY FOR PROD): [https://testnet.neardata.xyz](https://testnet.neardata.xyz)
+- Testnet: [https://testnet.neardata.xyz](https://testnet.neardata.xyz)
 
 ## API
 
@@ -60,6 +60,7 @@ Example:
 - Genesis block (mainnet) https://mainnet.neardata.xyz/v0/block/9820210
 - Regular block (mainnet) https://mainnet.neardata.xyz/v0/block/98765432
 - Missing block (mainnet) https://mainnet.neardata.xyz/v0/block/115001861
+- Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888
 - Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000
 
 #### `/v0/last_block/final`
@@ -72,7 +73,6 @@ Example:
 
 - Mainnet: https://mainnet.neardata.xyz/v0/last_block/final
 - Testnet: https://testnet.neardata.xyz/v0/last_block/final
-
 
 ## Running locally
 

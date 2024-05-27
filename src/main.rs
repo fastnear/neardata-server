@@ -56,7 +56,7 @@ async fn greet() -> impl Responder {
                 The <code>tx_hash</code> is the hash of the transaction that produced the receipt.</li>
         </ul>
 
-        <p>Example: <a href='/v0/block/9820210'>/v0/block/9820210</a></p>
+        <p>Example: <a href='/v0/block/100000000'>/v0/block/100000000</a></p>
 
         <h3>GET /v0/first_block</h3>
         <p>Redirects to the first block after genesis.</p>
