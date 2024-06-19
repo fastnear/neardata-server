@@ -123,6 +123,8 @@ pub mod v0 {
                 })));
         }
 
+        let mut was_sleeping = false;
+
         tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
 
         let mut block = loop {
@@ -153,6 +155,7 @@ pub mod v0 {
                             100 + 1000 * (block_height - last_block_height - 1),
                         ))
                         .await;
+                        was_sleeping = true;
                         continue;
                     }
 
@@ -179,11 +182,18 @@ pub mod v0 {
             };
         };
 
+        if was_sleeping {
+            // Issuing a redirect to the same URL to make sure we cache the request.
+            return Ok(HttpResponse::Found()
+                .append_header((header::LOCATION, format!("/v0/block/{}", block_height)))
+                .finish());
+        }
+
         let mut cache_duration = DEFAULT_CACHE_DURATION;
         if block.is_empty() {
             block = "null".to_string();
             // Temporary avoid caching empty blocks
-            cache_duration = Duration::from_secs(60);
+            cache_duration = Duration::from_secs(24 * 60 * 60);
         }
         Ok(HttpResponse::Ok()
             .append_header((header::CONTENT_TYPE, "application/json; charset=utf-8"))
