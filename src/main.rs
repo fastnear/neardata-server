@@ -19,11 +19,21 @@ pub struct ReadConfig {
 }
 
 #[derive(Clone)]
+pub struct ArchiveConfig {
+    pub archive_url: String,
+    pub main_url: String,
+    pub start_height: BlockHeight,
+    pub end_height: BlockHeight,
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub redis_client: redis::Client,
     pub read_config: ReadConfig,
     pub chain_id: ChainId,
     pub genesis_block_height: BlockHeight,
+    pub is_latest: bool,
+    pub archive_config: Option<ArchiveConfig>,
 }
 
 async fn greet() -> impl Responder {
@@ -98,6 +108,27 @@ async fn main() -> std::io::Result<()> {
             .expect("Failed to parse SAVE_EVERY_N"),
     };
 
+    let is_latest = env::var("IS_LATEST").map_or(true, |v| v == "true");
+    let archive_config = if let Ok(archive_url) = env::var("ARCHIVE_URL") {
+        let start_height: BlockHeight = env::var("ARCHIVE_START_HEIGHT")
+            .expect("Missing ARCHIVE_START_HEIGHT env var")
+            .parse()
+            .expect("Failed to parse ARCHIVE_START_HEIGHT");
+        let end_height: BlockHeight = env::var("ARCHIVE_END_HEIGHT")
+            .expect("Missing ARCHIVE_END_HEIGHT env var")
+            .parse()
+            .expect("Failed to parse ARCHIVE_END_HEIGHT");
+
+        Some(ArchiveConfig {
+            archive_url,
+            main_url: env::var("MAIN_URL").expect("Missing MAIN_URL env var"),
+            start_height,
+            end_height,
+        })
+    } else {
+        None
+    };
+
     let genesis_block_height = env::var("GENESIS_BLOCK_HEIGHT")
         .expect("Missing GENESIS_BLOCK_HEIGHT env var")
         .parse()
@@ -126,6 +157,8 @@ async fn main() -> std::io::Result<()> {
                 read_config: read_config.clone(),
                 chain_id,
                 genesis_block_height,
+                is_latest,
+                archive_config: archive_config.clone(),
             }))
             .wrap(cors)
             .wrap(middleware::Logger::new(

@@ -56,6 +56,19 @@ pub mod v0 {
     ) -> Result<impl Responder, ServiceError> {
         let chain_id = app_state.chain_id;
 
+        if !app_state.is_latest {
+            // Redirect to the main url
+            return Ok(HttpResponse::Found()
+                .append_header((
+                    header::LOCATION,
+                    format!(
+                        "{}/v0/last_block/final",
+                        app_state.archive_config.as_ref().unwrap().archive_url
+                    ),
+                ))
+                .finish());
+        }
+
         tracing::debug!(target: TARGET_API, "Retrieving the last block for finality final");
 
         let last_block_height =
@@ -76,6 +89,23 @@ pub mod v0 {
         _request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
+        if let Some(archive_config) = &app_state.archive_config {
+            if app_state.is_latest {
+                return Ok(HttpResponse::Found()
+                    .append_header((
+                        header::CACHE_CONTROL,
+                        format!("public, max-age={}", 24 * 60 * 60),
+                    ))
+                    .append_header((
+                        header::LOCATION,
+                        format!(
+                            "{}/v0/block/{}",
+                            archive_config.archive_url, app_state.genesis_block_height
+                        ),
+                    ))
+                    .finish());
+            }
+        }
         Ok(HttpResponse::Found()
             .append_header((
                 header::CACHE_CONTROL,
@@ -121,6 +151,31 @@ pub mod v0 {
                     "error": "Block height is before the genesis",
                     "type": "BLOCK_HEIGHT_TOO_LOW"
                 })));
+        }
+        if let Some(archive_config) = &app_state.archive_config {
+            if app_state.is_latest && block_height < archive_config.end_height {
+                return Ok(HttpResponse::Found()
+                    .append_header((
+                        header::CACHE_CONTROL,
+                        format!("public, max-age={}", 24 * 60 * 60),
+                    ))
+                    .append_header((
+                        header::LOCATION,
+                        format!("{}/v0/block/{}", archive_config.archive_url, block_height),
+                    ))
+                    .finish());
+            } else if !app_state.is_latest && block_height > archive_config.end_height {
+                return Ok(HttpResponse::Found()
+                    .append_header((
+                        header::CACHE_CONTROL,
+                        format!("public, max-age={}", 24 * 60 * 60),
+                    ))
+                    .append_header((
+                        header::LOCATION,
+                        format!("{}/v0/block/{}", archive_config.main_url, block_height),
+                    ))
+                    .finish());
+            }
         }
 
         tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
@@ -183,7 +238,7 @@ pub mod v0 {
         if block.is_empty() {
             block = "null".to_string();
             // Temporary avoid caching empty blocks
-            cache_duration = Duration::from_secs(60);
+            cache_duration = Duration::from_secs(24 * 60 * 60);
         }
         Ok(HttpResponse::Ok()
             .append_header((header::CONTENT_TYPE, "application/json; charset=utf-8"))
