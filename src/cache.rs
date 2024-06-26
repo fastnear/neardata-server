@@ -6,16 +6,33 @@ const CACHE_EXPIRATION: std::time::Duration = std::time::Duration::from_secs(60)
 
 const TARGET: &str = "cache";
 
-fn block_key(chain_id: ChainId, block_height: BlockHeight) -> String {
-    format!("b:{}:{}", chain_id, block_height)
+pub(crate) fn finality_suffix(finality: Finality) -> &'static str {
+    match finality {
+        Finality::Final => "",
+        Finality::Optimistic => "_opt",
+    }
+}
+
+fn block_key(chain_id: ChainId, block_height: BlockHeight, finality: Finality) -> String {
+    format!(
+        "b:{}{}:{}",
+        chain_id,
+        finality_suffix(finality),
+        block_height
+    )
+}
+
+fn last_block_key(chain_id: ChainId, finality: Finality) -> String {
+    format!("meta:{}{}:last_block", chain_id, finality_suffix(finality))
 }
 
 pub(crate) async fn get_last_block_height(
     redis_client: redis::Client,
     chain_id: ChainId,
+    finality: Finality,
 ) -> Option<BlockHeight> {
     let res: redis::RedisResult<BlockHeight> = with_retries!(redis_client, |connection| async {
-        let key = format!("meta:{}:last_block", chain_id);
+        let key = last_block_key(chain_id, finality);
         redis::cmd("GET").arg(&key).query_async(connection).await
     });
     res.ok()
@@ -25,14 +42,15 @@ pub(crate) async fn get_block_and_last_block_height(
     redis_client: redis::Client,
     chain_id: ChainId,
     block_height: BlockHeight,
+    finality: Finality,
 ) -> redis::RedisResult<(Option<String>, Option<BlockHeight>)> {
     let res: redis::RedisResult<(Option<String>, Option<String>)> =
         with_retries!(redis_client, |connection| async {
             redis::pipe()
                 .cmd("GET")
-                .arg(block_key(chain_id, block_height))
+                .arg(block_key(chain_id, block_height, finality))
                 .cmd("GET")
-                .arg(format!("meta:{}:last_block", chain_id))
+                .arg(last_block_key(chain_id, finality))
                 .query_async(connection)
                 .await
         });
@@ -46,10 +64,11 @@ pub(crate) async fn set_block(
     redis_client: redis::Client,
     chain_id: ChainId,
     block_height: BlockHeight,
+    finality: Finality,
     block: &str,
 ) -> Result<(), redis::RedisError> {
     with_retries!(redis_client, |connection| async {
-        let key = block_key(chain_id, block_height);
+        let key = block_key(chain_id, block_height, finality);
         redis::cmd("SET")
             .arg(&key)
             .arg(block)
@@ -63,10 +82,11 @@ pub(crate) async fn set_block(
 pub(crate) fn set_multiple_blocks_async(
     redis_client: redis::Client,
     chain_id: ChainId,
+    finality: Finality,
     blocks: Vec<(BlockHeight, Option<String>)>,
 ) {
     tokio::spawn((|| async move {
-        if let Err(e) = set_multiple_blocks(redis_client, chain_id, blocks).await {
+        if let Err(e) = set_multiple_blocks(redis_client, chain_id, finality, blocks).await {
             tracing::warn!(target: TARGET, "Error setting multiple blocks: {:?}", e);
         } else {
             tracing::debug!(target: TARGET, "Successfully set multiple blocks");
@@ -77,12 +97,13 @@ pub(crate) fn set_multiple_blocks_async(
 async fn set_multiple_blocks(
     redis_client: redis::Client,
     chain_id: ChainId,
+    finality: Finality,
     blocks: Vec<(BlockHeight, Option<String>)>,
 ) -> Result<(), redis::RedisError> {
     with_retries!(redis_client, |connection| async {
         let mut pipe = redis::pipe();
         for (block_height, block) in &blocks {
-            let key = block_key(chain_id, *block_height);
+            let key = block_key(chain_id, *block_height, finality);
             pipe.cmd("SET")
                 .arg(&key)
                 .arg(block.as_ref().map(|s| s.as_str()).unwrap_or_default())

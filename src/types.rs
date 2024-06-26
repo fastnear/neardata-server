@@ -28,3 +28,30 @@ impl TryFrom<String> for ChainId {
         }
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Finality {
+    Final,
+    Optimistic,
+}
+
+impl Display for Finality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Finality::Final => write!(f, "final"),
+            Finality::Optimistic => write!(f, "optimistic"),
+        }
+    }
+}
+
+impl TryFrom<String> for Finality {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "final" => Ok(Finality::Final),
+            "optimistic" => Ok(Finality::Optimistic),
+            _ => Err(format!("Invalid finality: {}", value)),
+        }
+    }
+}

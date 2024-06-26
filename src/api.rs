@@ -48,31 +48,35 @@ impl ResponseError for ServiceError {
 
 pub mod v0 {
     use super::*;
+    use crate::cache::finality_suffix;
 
-    #[get("/last_block/final")]
-    pub async fn get_last_block_final(
-        _request: HttpRequest,
+    #[get("/last_block/{finality}")]
+    pub async fn get_last_block(
+        request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
         let chain_id = app_state.chain_id;
-
+        let finality =
+            Finality::try_from(request.match_info().get("finality").unwrap().to_string())
+                .map_err(|_| ServiceError::ArgumentError)?;
         if !app_state.is_latest {
             // Redirect to the main url
             return Ok(HttpResponse::Found()
                 .append_header((
                     header::LOCATION,
                     format!(
-                        "{}/v0/last_block/final",
-                        app_state.archive_config.as_ref().unwrap().main_url
+                        "{}/v0/last_block/{}",
+                        app_state.archive_config.as_ref().unwrap().main_url,
+                        finality
                     ),
                 ))
                 .finish());
         }
 
-        tracing::debug!(target: TARGET_API, "Retrieving the last block for finality final");
+        tracing::debug!(target: TARGET_API, "Retrieving the last block for finality {}", finality);
 
         let last_block_height =
-            cache::get_last_block_height(app_state.redis_client.clone(), chain_id)
+            cache::get_last_block_height(app_state.redis_client.clone(), chain_id, finality)
                 .await
                 .ok_or_else(|| {
                     ServiceError::CacheError(
@@ -80,7 +84,14 @@ pub mod v0 {
                     )
                 })?;
         Ok(HttpResponse::Found()
-            .append_header((header::LOCATION, format!("/v0/block/{}", last_block_height)))
+            .append_header((
+                header::LOCATION,
+                format!(
+                    "/v0/block{}/{}",
+                    finality_suffix(finality),
+                    last_block_height
+                ),
+            ))
             .finish())
     }
 
@@ -118,18 +129,41 @@ pub mod v0 {
             .finish())
     }
 
-    #[get("/block/{block_height}")]
-    pub async fn get_block(
+    #[get("/block_opt/{block_height}")]
+    pub async fn get_opt_block(
         request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
-        let chain_id = app_state.chain_id;
         let block_height = request
             .match_info()
             .get("block_height")
             .unwrap()
             .parse::<BlockHeight>()
             .map_err(|_| ServiceError::ArgumentError)?;
+        get_block_inner(block_height, Finality::Optimistic, app_state).await
+    }
+
+    #[get("/block/{block_height}")]
+    pub async fn get_block(
+        request: HttpRequest,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        let block_height = request
+            .match_info()
+            .get("block_height")
+            .unwrap()
+            .parse::<BlockHeight>()
+            .map_err(|_| ServiceError::ArgumentError)?;
+        get_block_inner(block_height, Finality::Final, app_state).await
+    }
+
+    async fn get_block_inner(
+        block_height: BlockHeight,
+        finality: Finality,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        let chain_id = app_state.chain_id;
+
         if block_height > MAX_BLOCK_HEIGHT {
             return Ok(HttpResponse::NotFound()
                 .append_header((
@@ -152,6 +186,7 @@ pub mod v0 {
                     "type": "BLOCK_HEIGHT_TOO_LOW"
                 })));
         }
+
         if let Some(archive_config) = &app_state.archive_config {
             if app_state.is_latest && block_height < archive_config.end_height {
                 return Ok(HttpResponse::Found()
@@ -164,7 +199,9 @@ pub mod v0 {
                         format!("{}/v0/block/{}", archive_config.archive_url, block_height),
                     ))
                     .finish());
-            } else if !app_state.is_latest && block_height >= archive_config.end_height {
+            } else if !app_state.is_latest
+                && (block_height >= archive_config.end_height || finality == Finality::Optimistic)
+            {
                 return Ok(HttpResponse::Found()
                     .append_header((
                         header::CACHE_CONTROL,
@@ -172,19 +209,25 @@ pub mod v0 {
                     ))
                     .append_header((
                         header::LOCATION,
-                        format!("{}/v0/block/{}", archive_config.main_url, block_height),
+                        format!(
+                            "{}/v0/block{}/{}",
+                            archive_config.main_url,
+                            finality_suffix(finality),
+                            block_height
+                        ),
                     ))
                     .finish());
             }
         }
 
-        tracing::debug!(target: TARGET_API, "Retrieving block for block_height: {}", block_height);
+        tracing::debug!(target: TARGET_API, "Retrieving {} block for block_height: {}", finality, block_height);
 
         let mut block = loop {
             match cache::get_block_and_last_block_height(
                 app_state.redis_client.clone(),
                 chain_id,
                 block_height,
+                finality,
             )
             .await?
             {
@@ -219,6 +262,20 @@ pub mod v0 {
                         }
                     }
 
+                    if finality == Finality::Optimistic {
+                        // Redirect to the final block
+                        return Ok(HttpResponse::Found()
+                            .append_header((
+                                header::CACHE_CONTROL,
+                                format!("public, max-age={}", 24 * 60 * 60),
+                            ))
+                            .append_header((
+                                header::LOCATION,
+                                format!("/v0/block/{}", block_height),
+                            ))
+                            .finish());
+                    }
+
                     let blocks = read_blocks(&app_state.read_config, chain_id, block_height);
                     let block = blocks
                         .iter()
@@ -230,7 +287,12 @@ pub mod v0 {
                             }
                         })
                         .unwrap();
-                    set_multiple_blocks_async(app_state.redis_client.clone(), chain_id, blocks);
+                    set_multiple_blocks_async(
+                        app_state.redis_client.clone(),
+                        chain_id,
+                        finality,
+                        blocks,
+                    );
                     break block;
                 }
             };

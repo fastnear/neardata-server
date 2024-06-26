@@ -55,7 +55,7 @@ async fn greet() -> impl Responder {
         <h2>API</h2>
         <h3>GET /v0/block</h3>
 
-        <p>Returns the block by block height.</p>
+        <p>Returns the finalized block by block height.</p>
         <ul>
             <li> If the block doesn't exist it returns <code>null</code>.</li>
             <li> If the block is not produced yet, but close to the current finalized block,
@@ -68,6 +68,11 @@ async fn greet() -> impl Responder {
 
         <p>Example: <a href='/v0/block/100000000'>/v0/block/100000000</a></p>
 
+        <h3>GET /v0/block_opt</h3>
+        <p>Returns the optimistic block by block height or redirects to the finalized block.</p>
+
+        <p>Example: <a href='/v0/block_opt/122000000'>/v0/block_opt/122000000</a></p>
+
         <h3>GET /v0/first_block</h3>
         <p>Redirects to the first block after genesis.</p>
         <p>The block is guaranteed to exist and will be returned immediately.</p>
@@ -79,6 +84,12 @@ async fn greet() -> impl Responder {
         <p>The block is guaranteed to exist and will be returned immediately.</p>
 
         <p>Example: <a href='/v0/last_block/final'>/v0/last_block/final</a></p>
+
+        <h3>GET /v0/last_block/optimistic</h3>
+        <p>Redirects to the latest optimistic block.</p>
+        <p>The block is guaranteed to exist and will be returned immediately.</p>
+
+        <p>Example: <a href='/v0/last_block/optimistic'>/v0/last_block/optimistic</a></p>
     ")
 }
 
@@ -150,7 +161,8 @@ async fn main() -> std::io::Result<()> {
         let api_v0 = web::scope("/v0")
             .service(api::v0::get_first_block)
             .service(api::v0::get_block)
-            .service(api::v0::get_last_block_final);
+            .service(api::v0::get_opt_block)
+            .service(api::v0::get_last_block);
         App::new()
             .app_data(web::Data::new(AppState {
                 redis_client: redis_client.clone(),

@@ -17,8 +17,10 @@ FASTNEAR provides servers for both mainnet and testnet:
 The server provides the following endpoints:
 
 - `/v0/first_block` - Redirects to the first block after genesis.
-- `/v0/block/:block_height` - Get block by the block height in a JSON format.
+- `/v0/block/:block_height` - Get a finalized block by the block height in a JSON format.
+- `/v0/block_opt/:block_height` - Get an optimistic block by the block height in a JSON format.
 - `/v0/last_block/final` - Redirects to the latest finalized block.
+- `/v0/last_block/optimistic` - Redirects to the latest optimistic block.
 
 ## Usage
 
@@ -63,6 +65,12 @@ Example:
 - Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888
 - Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000
 
+#### `/v0/block_opt/:block_height`
+
+Returns the optimistic block by block height.
+
+If the block is relatively old it will be redirected to the finalized block.
+
 #### `/v0/last_block/final`
 
 Redirects to the latest finalized block.
@@ -73,6 +81,17 @@ Example:
 
 - Mainnet: https://mainnet.neardata.xyz/v0/last_block/final
 - Testnet: https://testnet.neardata.xyz/v0/last_block/final
+
+#### `/v0/last_block/optimistic`
+
+Redirects to the latest optimistic block.
+
+The block is guaranteed to exist and will be returned immediately.
+
+Example:
+
+- Mainnet: https://mainnet.neardata.xyz/v0/last_block/optimistic
+- Testnet: https://testnet.neardata.xyz/v0/last_block/optimistic
 
 ## Running locally
 
