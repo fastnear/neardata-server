@@ -196,25 +196,27 @@ pub mod v0 {
                 }
                 (None, Some(last_block_height)) => {
                     // Not cached
-                    if block_height > last_block_height + MAX_WAIT_BLOCKS {
-                        return Ok(HttpResponse::NotFound().json(json!({
-                            "error": "The block is too far in the future",
-                            "type": "BLOCK_DOES_NOT_EXIST"
-                        })));
-                    }
+                    if app_state.is_latest {
+                        if block_height > last_block_height + MAX_WAIT_BLOCKS {
+                            return Ok(HttpResponse::NotFound().json(json!({
+                                "error": "The block is too far in the future",
+                                "type": "BLOCK_DOES_NOT_EXIST"
+                            })));
+                        }
 
-                    if block_height > last_block_height {
-                        tokio::time::sleep(Duration::from_millis(
-                            100 + 1000 * (block_height - last_block_height - 1),
-                        ))
-                        .await;
-                        continue;
-                    }
+                        if block_height > last_block_height {
+                            tokio::time::sleep(Duration::from_millis(
+                                100 + 1000 * (block_height - last_block_height - 1),
+                            ))
+                            .await;
+                            continue;
+                        }
 
-                    if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
-                        return Err(ServiceError::CacheError(
-                            "The block is not cached".to_string(),
-                        ));
+                        if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
+                            return Err(ServiceError::CacheError(
+                                "The block is not cached".to_string(),
+                            ));
+                        }
                     }
 
                     let blocks = read_blocks(&app_state.read_config, chain_id, block_height);
