@@ -63,7 +63,7 @@ pub mod v0 {
                     header::LOCATION,
                     format!(
                         "{}/v0/last_block/final",
-                        app_state.archive_config.as_ref().unwrap().archive_url
+                        app_state.archive_config.as_ref().unwrap().main_url
                     ),
                 ))
                 .finish());
@@ -164,7 +164,7 @@ pub mod v0 {
                         format!("{}/v0/block/{}", archive_config.archive_url, block_height),
                     ))
                     .finish());
-            } else if !app_state.is_latest && block_height > archive_config.end_height {
+            } else if !app_state.is_latest && block_height >= archive_config.end_height {
                 return Ok(HttpResponse::Found()
                     .append_header((
                         header::CACHE_CONTROL,
@@ -237,7 +237,7 @@ pub mod v0 {
         let mut cache_duration = DEFAULT_CACHE_DURATION;
         if block.is_empty() {
             block = "null".to_string();
-            // Temporary avoid caching empty blocks
+            // Temporary avoid caching empty blocks for too long
             cache_duration = Duration::from_secs(24 * 60 * 60);
         }
         Ok(HttpResponse::Ok()
