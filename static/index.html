@@ -18,6 +18,37 @@
       height: 400px;
       margin: 40px auto;
     }
+
+    .toggle-bar {
+      display: flex;
+      align-items: center;
+      margin-top: 1em;
+    }
+
+    .toggle-bar label {
+      padding: 0.5em;
+      border: 1px #999 solid;
+      color: #999;
+    }
+
+    .toggle-bar label.left {
+      border-top-left-radius: 0.5em;
+      border-bottom-left-radius: 0.5em;
+    }
+
+    .toggle-bar label.right {
+      border-top-right-radius: 0.5em;
+      border-bottom-right-radius: 0.5em;
+    }
+
+    .toggle-bar input[type="radio"] {
+      display: none;
+    }
+
+    .toggle-bar input[type="radio"]:checked + label {
+      background: rgba(33, 160, 44, 0.2);
+      color: #000;
+    }
   </style>
 </head>
 <body>
@@ -26,10 +57,27 @@
 
 <h2>LIVE LATENCY TEST</h2>
 <div id="latency">
-
+  <div class="toggle-bar">
+    Block type:
+    <input type="radio" id="final" name="blocktype" value="final" checked>
+    <label class="left" for="final">Final</label>
+    <input type="radio" id="optimistic" name="blocktype" value="optimistic">
+    <label class="right" for="optimistic">Optimistic</label>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
   <canvas id="chart"></canvas>
   <script>
+    let blockType = "final";
+    let selectBlockType;
+
+    // Listen to radio above changing:
+    document.querySelector('.toggle-bar').addEventListener('change', (event) => {
+      if (event.target.type === 'radio' && event.target.checked) {
+        console.log(`Selected block type: ${event.target.value}`);
+        selectBlockType(event.target.value);
+      }
+    });
+
     const ctx = document.getElementById('chart').getContext('2d');
     const MaxLength = 30;
     const rootUrl = "";
@@ -38,7 +86,7 @@
       data: {
         labels: [],
         datasets: [{
-          label: 'Final block latency',
+          label: 'Pending',
           data: [],
           backgroundColor: 'rgba(33, 160, 44, 0.2)',
           borderColor: 'rgba(33, 160, 44, 1)',
@@ -47,24 +95,26 @@
       },
       options: {
         scales: {
-          yAxes: [{
-            scaleLabel: {
+          y: {
+            beginAtZero: true,
+            title: {
               display: true,
-              labelString: 'Latency (seconds)'
+              text: 'Latency (seconds)'
             }
-          }],
-          xAxes: [{
-            scaleLabel: {
+          },
+          x: {
+            title: {
               display: true,
-              labelString: 'Block Height'
+              text: 'Block Height'
             }
-          }]
+          }
         }
       }
     });
+    let nonce = 0;
 
-    const fetchUntilSuccess = async (url) => {
-      while (true) {
+    const fetchUntilSuccess = async (url, currentNonce) => {
+      while (nonce === currentNonce) {
         try {
           console.log("Fetching ", url);
           return await (await fetch(url)).json();
@@ -76,14 +126,14 @@
       }
     }
     // Initial block
-    const fetcher = async () => {
-      const initialBlock = await fetchUntilSuccess(rootUrl + "/v0/last_block/final");
+    const fetcher = async (blockType, currentNonce) => {
+      const initialBlock = await fetchUntilSuccess(rootUrl + `/v0/last_block/${blockType}`, currentNonce);
       const startBlockHeight = initialBlock.block.header.height;
-      // Only stream for 60 blocks ~ 1 minute
-      for (let i = 1; i <= 300; ++i) {
+      // Only stream for 300 blocks ~ 5 minute
+      for (let i = 1; nonce === currentNonce && i <= 300; ++i) {
         const blockHeight = startBlockHeight + i;
-        const block = await fetchUntilSuccess(rootUrl + `/v0/block/${blockHeight}`);
-        if (block) {
+        const block = await fetchUntilSuccess(rootUrl + `/v0/${blockType === "final" ? "block" : "block_opt"}/${blockHeight}`, currentNonce);
+        if (nonce === currentNonce && block) {
           const blockTime = parseFloat(block.block.header.timestamp_nanosec) / 1e9;
           const time = new Date().getTime() / 1e3;
           const latency = time - blockTime;
@@ -97,8 +147,19 @@
         }
       }
     };
-    fetcher().then(() => {
-    });
+
+    selectBlockType = (newBlockType) => {
+      nonce++;
+      blockType = newBlockType;
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.data.datasets[0].label = `${blockType.slice(0, 1).toUpperCase() + blockType.slice(1)} blocks latency`;
+      chart.update();
+      fetcher(blockType, nonce).then(() => {
+      });
+    }
+
+    selectBlockType(blockType);
 
   </script>
 </div>
