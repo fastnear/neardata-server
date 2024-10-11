@@ -12,6 +12,8 @@ use actix_web::http::header;
 use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use tracing_subscriber::EnvFilter;
 
+pub static INDEX_HTML: &str = include_str!("../static/index.html");
+
 #[derive(Clone)]
 pub struct ReadConfig {
     pub path: String,
@@ -39,58 +41,7 @@ pub struct AppState {
 async fn greet() -> impl Responder {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
-        .body("
-        <style>
-            html {
-                max-width: 70ch;
-                padding: 3em 1em;
-                margin: auto;
-                line-height: 1.75;
-                font-size: 1.25em;
-            }
-        </style>
-        <h1>NEAR Data Server by FASTNEAR</h1>
-        <p>For more information, visit <a href='https://github.com/fastnear/neardata-server/'>GitHub</a></p>
-
-        <h2>API</h2>
-        <h3>GET /v0/block</h3>
-
-        <p>Returns the finalized block by block height.</p>
-        <ul>
-            <li> If the block doesn't exist it returns <code>null</code>.</li>
-            <li> If the block is not produced yet, but close to the current finalized block,
-                the server will wait for the block to be produced and return it.</li>
-            <li> The difference from NEAR Lake data is each block is served as a single
-                JSON object, instead of the block and shards. Another benefit, is we include
-                the <code>tx_hash</code> for every receipt in the <code>receipt_execution_outcomes</code>.
-                The <code>tx_hash</code> is the hash of the transaction that produced the receipt.</li>
-        </ul>
-
-        <p>Example: <a href='/v0/block/100000000'>/v0/block/100000000</a></p>
-
-        <h3>GET /v0/block_opt</h3>
-        <p>Returns the optimistic block by block height or redirects to the finalized block.</p>
-
-        <p>Example: <a href='/v0/block_opt/122000000'>/v0/block_opt/122000000</a></p>
-
-        <h3>GET /v0/first_block</h3>
-        <p>Redirects to the first block after genesis.</p>
-        <p>The block is guaranteed to exist and will be returned immediately.</p>
-
-        <p>Example: <a href='/v0/first_block'>/v0/first_block</a></p>
-
-        <h3>GET /v0/last_block/final</h3>
-        <p>Redirects to the latest finalized block.</p>
-        <p>The block is guaranteed to exist and will be returned immediately.</p>
-
-        <p>Example: <a href='/v0/last_block/final'>/v0/last_block/final</a></p>
-
-        <h3>GET /v0/last_block/optimistic</h3>
-        <p>Redirects to the latest optimistic block.</p>
-        <p>The block is guaranteed to exist and will be returned immediately.</p>
-
-        <p>Example: <a href='/v0/last_block/optimistic'>/v0/last_block/optimistic</a></p>
-    ")
+        .body(INDEX_HTML)
 }
 
 #[actix_web::main]
