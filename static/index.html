@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>NEAR Data Server by FASTNEAR</title>
+  <style>
+    html {
+      max-width: 70ch;
+      padding: 3em 1em;
+      margin: auto;
+      line-height: 1.75;
+      font-size: 1.25em;
+    }
+
+    #chart {
+      width: 800px;
+      height: 400px;
+      margin: 40px auto;
+    }
+  </style>
+</head>
+<body>
+<h1>NEAR Data Server by FASTNEAR</h1>
+<p>For more information, visit <a href='https://github.com/fastnear/neardata-server/'>GitHub</a></p>
+
+<h2>LIVE LATENCY TEST</h2>
+<div id="latency">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+  <canvas id="chart"></canvas>
+  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    const MaxLength = 30;
+    const rootUrl = "";
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Final block latency',
+          data: [],
+          backgroundColor: 'rgba(33, 160, 44, 0.2)',
+          borderColor: 'rgba(33, 160, 44, 1)',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        scales: {
+          yAxes: [{
+            scaleLabel: {
+              display: true,
+              labelString: 'Latency (seconds)'
+            }
+          }],
+          xAxes: [{
+            scaleLabel: {
+              display: true,
+              labelString: 'Block Height'
+            }
+          }]
+        }
+      }
+    });
+
+    const fetchUntilSuccess = async (url) => {
+      while (true) {
+        try {
+          console.log("Fetching ", url);
+          return await (await fetch(url)).json();
+        } catch (e) {
+          console.error("Failed to fetch url", url, ": ", e);
+          // Sleep 500
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    }
+    // Initial block
+    const fetcher = async () => {
+      const initialBlock = await fetchUntilSuccess(rootUrl + "/v0/last_block/final");
+      const startBlockHeight = initialBlock.block.header.height;
+      // Only stream for 60 blocks ~ 1 minute
+      for (let i = 1; i <= 300; ++i) {
+        const blockHeight = startBlockHeight + i;
+        const block = await fetchUntilSuccess(rootUrl + `/v0/block/${blockHeight}`);
+        if (block) {
+          const blockTime = parseFloat(block.block.header.timestamp_nanosec) / 1e9;
+          const time = new Date().getTime() / 1e3;
+          const latency = time - blockTime;
+          chart.data.labels.push(blockHeight);
+          chart.data.datasets[0].data.push(latency);
+          if (chart.data.labels.length > MaxLength) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+          }
+          chart.update();
+        }
+      }
+    };
+    fetcher().then(() => {
+    });
+
+  </script>
+</div>
+
+<h2>API</h2>
+<h3>GET /v0/block</h3>
+
+<p>Returns the finalized block by block height.</p>
+<ul>
+  <li> If the block doesn't exist it returns <code>null</code>.</li>
+  <li> If the block is not produced yet, but close to the current finalized block,
+    the server will wait for the block to be produced and return it.
+  </li>
+  <li> The difference from NEAR Lake data is each block is served as a single
+    JSON object, instead of the block and shards. Another benefit, is we include
+    the <code>tx_hash</code> for every receipt in the <code>receipt_execution_outcomes</code>.
+    The <code>tx_hash</code> is the hash of the transaction that produced the receipt.
+  </li>
+</ul>
+
+<p>Example: <a href='/v0/block/100000000'>/v0/block/100000000</a></p>
+
+<h3>GET /v0/block_opt</h3>
+<p>Returns the optimistic block by block height or redirects to the finalized block.</p>
+
+<p>Example: <a href='/v0/block_opt/122000000'>/v0/block_opt/122000000</a></p>
+
+<h3>GET /v0/first_block</h3>
+<p>Redirects to the first block after genesis.</p>
+<p>The block is guaranteed to exist and will be returned immediately.</p>
+
+<p>Example: <a href='/v0/first_block'>/v0/first_block</a></p>
+
+<h3>GET /v0/last_block/final</h3>
+<p>Redirects to the latest finalized block.</p>
+<p>The block is guaranteed to exist and will be returned immediately.</p>
+
+<p>Example: <a href='/v0/last_block/final'>/v0/last_block/final</a></p>
+
+<h3>GET /v0/last_block/optimistic</h3>
+<p>Redirects to the latest optimistic block.</p>
+<p>The block is guaranteed to exist and will be returned immediately.</p>
+
+<p>Example: <a href='/v0/last_block/optimistic'>/v0/last_block/optimistic</a></p>
+</body>
+</html>
