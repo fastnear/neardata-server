@@ -6,21 +6,30 @@ use std::io::Read;
 
 const TARGET: &str = "reader";
 
-pub fn read_blocks(
+pub fn archive_filename(
     config: &ReadConfig,
     chain_id: ChainId,
     block_height: BlockHeight,
-) -> Vec<(BlockHeight, Option<String>)> {
+) -> String {
     let starting_block = block_height / config.save_every_n * config.save_every_n;
     let padded_block_height = format!("{:0>12}", starting_block);
-    let filename = format!(
+    format!(
         "{}/{}/{}/{}/{}.tgz",
         config.path,
         chain_id,
         &padded_block_height[..6],
         &padded_block_height[6..9],
         padded_block_height
-    );
+    )
+}
+
+pub fn read_blocks(
+    config: &ReadConfig,
+    chain_id: ChainId,
+    block_height: BlockHeight,
+) -> Vec<(BlockHeight, Option<String>)> {
+    let starting_block = block_height / config.save_every_n * config.save_every_n;
+    let filename = archive_filename(config, chain_id, block_height);
 
     tracing::debug!(target: TARGET, "Reading blocks from {}", filename);
 
