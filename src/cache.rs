@@ -3,6 +3,8 @@ use crate::with_retries;
 
 const REDIS_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
 const CACHE_EXPIRATION: std::time::Duration = std::time::Duration::from_secs(60);
+const ARCHIVE_ATTEMPT_CACHE_EXPIRATION: std::time::Duration =
+    CACHE_EXPIRATION.saturating_sub(std::time::Duration::from_secs(5));
 
 const TARGET: &str = "cache";
 
@@ -77,6 +79,24 @@ pub(crate) async fn set_block(
             .query_async(connection)
             .await
     })
+}
+
+pub(crate) async fn acquire_archive_read_attempt(
+    redis_client: redis::Client,
+    archive_path: &str,
+) -> Result<bool, redis::RedisError> {
+    with_retries!(redis_client, |connection| async {
+        let key = format!("archive_read_attempt:{}", archive_path);
+        redis::cmd("SET")
+            .arg(&key)
+            .arg("1")
+            .arg("NX")
+            .arg("EX")
+            .arg(ARCHIVE_ATTEMPT_CACHE_EXPIRATION.as_secs())
+            .query_async(connection)
+            .await
+    })
+    .map(|res: Option<String>| res.is_some())
 }
 
 pub(crate) fn set_multiple_blocks_async(

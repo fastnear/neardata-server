@@ -49,6 +49,7 @@ impl ResponseError for ServiceError {
 pub mod v0 {
     use super::*;
     use crate::cache::finality_suffix;
+    use crate::reader::archive_filename;
 
     #[get("/last_block/{finality}")]
     pub async fn get_last_block(
@@ -274,6 +275,20 @@ pub mod v0 {
                                 format!("/v0/block/{}", block_height),
                             ))
                             .finish());
+                    }
+                    // Before reading blocks we'll check the last time the archive was accessed and
+                    // indicate we want to read it.
+                    let archive_fn =
+                        archive_filename(&app_state.read_config, chain_id, block_height);
+                    let should_read = cache::acquire_archive_read_attempt(
+                        app_state.redis_client.clone(),
+                        &archive_fn,
+                    )
+                    .await?;
+
+                    if !should_read {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
                     }
 
                     let blocks = read_blocks(&app_state.read_config, chain_id, block_height);
