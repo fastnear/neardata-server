@@ -249,10 +249,17 @@ pub mod v0 {
                         }
 
                         if block_height > last_block_height {
-                            tokio::time::sleep(Duration::from_millis(
-                                100 + 1000 * (block_height - last_block_height - 1),
-                            ))
-                            .await;
+                            // We'll wait for the last blocks queue.
+                            cache::wait_for_block(
+                                app_state.redis_client.clone(),
+                                chain_id,
+                                block_height,
+                                finality,
+                                Duration::from_millis(
+                                    1000 * (block_height - last_block_height + 1),
+                                ),
+                            )
+                            .await?;
                             continue;
                         }
 

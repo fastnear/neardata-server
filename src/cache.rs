@@ -99,6 +99,32 @@ pub(crate) async fn acquire_archive_read_attempt(
     .map(|res: Option<String>| res.is_some())
 }
 
+pub(crate) async fn wait_for_block(
+    redis_client: redis::Client,
+    chain_id: ChainId,
+    block_height: BlockHeight,
+    finality: Finality,
+    max_timeout: std::time::Duration,
+) -> redis::RedisResult<()> {
+    let id = format!("{}-0", block_height - 1);
+    let key = format!(
+        "meta:{}{}:last_blocks_queue",
+        chain_id,
+        finality_suffix(finality)
+    );
+    let _res: redis::Value = with_retries!(redis_client, |connection| async {
+        redis::cmd("XREAD")
+            .arg("BLOCK")
+            .arg(max_timeout.as_millis() as u64)
+            .arg("STREAMS")
+            .arg(&key)
+            .arg(&id)
+            .query_async(connection)
+            .await
+    })?;
+    Ok(())
+}
+
 pub(crate) fn set_multiple_blocks_async(
     redis_client: redis::Client,
     chain_id: ChainId,
