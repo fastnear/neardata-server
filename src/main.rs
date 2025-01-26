@@ -22,8 +22,12 @@ pub struct ReadConfig {
 
 #[derive(Clone)]
 pub struct ArchiveConfig {
+    // Will have to rework that once there is more than 1 archive
     pub archive_url: String,
-    pub main_url: String,
+    // The latest archive node that has files
+    pub latest_url: String,
+    // The main node that has the latest block and doesn't have files. Keeps everything in memory.
+    pub fresh_url: String,
     pub start_height: BlockHeight,
     pub end_height: BlockHeight,
 }
@@ -31,10 +35,11 @@ pub struct ArchiveConfig {
 #[derive(Clone)]
 pub struct AppState {
     pub redis_client: redis::Client,
-    pub read_config: ReadConfig,
+    pub read_config: Option<ReadConfig>,
     pub chain_id: ChainId,
     pub genesis_block_height: BlockHeight,
     pub is_latest: bool,
+    pub is_fresh: bool,
     pub archive_config: Option<ArchiveConfig>,
 }
 
@@ -62,15 +67,16 @@ async fn main() -> std::io::Result<()> {
         redis::Client::open(env::var("REDIS_URL").expect("Missing REDIS_URL env var"))
             .expect("Failed to connect to Redis");
 
-    let read_config = ReadConfig {
-        path: env::var("READ_PATH").expect("Missing READ_PATH env var"),
+    let read_config = env::var("READ_PATH").ok().map(|path| ReadConfig {
+        path,
         save_every_n: env::var("SAVE_EVERY_N")
             .expect("Missing SAVE_EVERY_N env var")
             .parse()
             .expect("Failed to parse SAVE_EVERY_N"),
-    };
+    });
 
     let is_latest = env::var("IS_LATEST").map_or(true, |v| v == "true");
+    let is_fresh = env::var("IS_FRESH").map_or(true, |v| v == "true");
     let archive_config = if let Ok(archive_url) = env::var("ARCHIVE_URL") {
         let start_height: BlockHeight = env::var("ARCHIVE_START_HEIGHT")
             .expect("Missing ARCHIVE_START_HEIGHT env var")
@@ -83,7 +89,8 @@ async fn main() -> std::io::Result<()> {
 
         Some(ArchiveConfig {
             archive_url,
-            main_url: env::var("MAIN_URL").expect("Missing MAIN_URL env var"),
+            latest_url: env::var("LATEST_URL").expect("Missing LATEST_URL env var"),
+            fresh_url: env::var("FRESH_URL").expect("Missing FRESH_URL env var"),
             start_height,
             end_height,
         })
@@ -121,6 +128,7 @@ async fn main() -> std::io::Result<()> {
                 chain_id,
                 genesis_block_height,
                 is_latest,
+                is_fresh,
                 archive_config: archive_config.clone(),
             }))
             .wrap(cors)
