@@ -369,7 +369,7 @@ pub mod v0 {
 
 #[get("/health")]
 pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, ServiceError> {
-    if (!app_state.is_latest) {
+    if !app_state.is_latest {
         return Ok(HttpResponse::Ok().json(json!({"status": "ok"})));
     }
     let chain_id = app_state.chain_id;
