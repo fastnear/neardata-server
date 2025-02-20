@@ -65,6 +65,30 @@ Example:
 - Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888
 - Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000
 
+#### `v0/block/:block_height/headers`
+
+Returns a smaller part from the response including only the `block` part of the JSON object.
+
+Example:
+
+- Genesis block (mainnet) https://mainnet.neardata.xyz/v0/block/9820210/headers
+- Regular block (mainnet) https://mainnet.neardata.xyz/v0/block/98765432/headers
+- Missing block (mainnet) https://mainnet.neardata.xyz/v0/block/115001861/headers
+- Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888/headers
+- Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000/headers
+
+#### `v0/block/:block_height/chunk/:shard_id`
+
+Returns a smaller part from the response including only the `chunk` of the requested `shard_id` part of the JSON object.
+
+Example:
+
+- Genesis block (mainnet) https://mainnet.neardata.xyz/v0/block/9820210/chunk/0
+- Regular block (mainnet) https://mainnet.neardata.xyz/v0/block/98765432/chunk/0
+- Missing block (mainnet) https://mainnet.neardata.xyz/v0/block/115001861/chunk/0
+- Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888/chunk/0
+- Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000/chunk/0
+
 #### `/v0/block_opt/:block_height`
 
 Returns the optimistic block by block height.

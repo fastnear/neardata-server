@@ -47,6 +47,9 @@ impl ResponseError for ServiceError {
 }
 
 pub mod v0 {
+    use actix_web::body::MessageBody;
+    use serde_json::Value;
+
     use super::*;
     use crate::cache::finality_suffix;
     use crate::reader::archive_filename;
@@ -159,6 +162,88 @@ pub mod v0 {
         get_block_inner(block_height, Finality::Final, app_state).await
     }
 
+    #[get("/block/{block_height}/headers")]
+    pub async fn get_block_headers(
+        request: HttpRequest,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        let block_height = request
+            .match_info()
+            .get("block_height")
+            .unwrap()
+            .parse::<BlockHeight>()
+            .map_err(|_| ServiceError::ArgumentError)?;
+        let response = get_block_inner(block_height, Finality::Final, app_state.clone()).await?;
+
+        // We need to grab the CACHE_CONTROL header from the response and return it
+        let headers = &response.headers().clone();
+        let cache_control_header = headers
+            .get(header::CACHE_CONTROL)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let body_bytes = response.into_body().try_into_bytes().unwrap();
+        let block_json: Value =
+            serde_json::from_slice(&body_bytes).map_err(|_| ServiceError::ArgumentError)?;
+        let block_json = block_json.get("block").ok_or(ServiceError::ArgumentError)?;
+
+        Ok(HttpResponse::Ok()
+            .insert_header((header::CACHE_CONTROL, cache_control_header.to_string()))
+            .json(block_json))
+    }
+
+    #[get("/block/{block_height}/chunk/{shard_id}")]
+    pub async fn get_chunk(
+        request: HttpRequest,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        let block_height = request
+            .match_info()
+            .get("block_height")
+            .unwrap()
+            .parse::<BlockHeight>()
+            .map_err(|_| ServiceError::ArgumentError)?;
+        let shard_id = request
+            .match_info()
+            .get("shard_id")
+            .unwrap()
+            .parse::<u64>()
+            .map_err(|_| ServiceError::ArgumentError)?;
+
+        let response = get_block_inner(block_height, Finality::Final, app_state.clone()).await?;
+
+        // We need to grab the CACHE_CONTROL header from the response and return it
+        let headers = &response.headers().clone();
+        let cache_control_header = headers
+            .get(header::CACHE_CONTROL)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let body_bytes = response.into_body().try_into_bytes().unwrap();
+        let block_json: Value =
+            serde_json::from_slice(&body_bytes).map_err(|_| ServiceError::ArgumentError)?;
+
+        // now we need to iterate over shards list in block_json and find the one with the right shard_id
+        let chunk_json = block_json
+            .get("shards")
+            .ok_or(ServiceError::ArgumentError)?
+            .as_array()
+            .ok_or(ServiceError::ArgumentError)?
+            .iter()
+            .find(|shard| shard["shard_id"].as_u64().unwrap() == shard_id)
+            .ok_or(ServiceError::ArgumentError)?;
+        // and we need the chunk from the shard
+        let chunk_json = chunk_json.get("chunk").ok_or(ServiceError::ArgumentError)?;
+
+        Ok(HttpResponse::Ok()
+            .insert_header((header::CACHE_CONTROL, cache_control_header.to_string()))
+            .json(chunk_json))
+    }
+
     /// Retrieves a block based on the given block height and finality.
     ///
     /// This function checks if the block height is within valid limits and handles redirects
@@ -178,7 +263,7 @@ pub mod v0 {
         block_height: BlockHeight,
         finality: Finality,
         app_state: web::Data<AppState>,
-    ) -> Result<impl Responder, ServiceError> {
+    ) -> Result<HttpResponse, ServiceError> {
         let chain_id = app_state.chain_id.clone();
 
         // Check if the block height is within valid limits
