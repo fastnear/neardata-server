@@ -45,6 +45,7 @@ pub fn read_blocks(
 
 fn read_archive(path: &str) -> HashMap<String, String> {
     if !std::path::Path::new(path).exists() {
+        tracing::error!(target: TARGET, "File not found: {}", path);
         return HashMap::new();
     }
     tar::Archive::new(GzDecoder::new(std::fs::File::open(path).unwrap()))
