@@ -41,6 +41,7 @@ pub struct AppState {
     pub is_latest: bool,
     pub is_fresh: bool,
     pub archive_config: Option<ArchiveConfig>,
+    pub max_healthy_latency_ms: u128,
 }
 
 async fn greet() -> impl Responder {
@@ -103,6 +104,11 @@ async fn main() -> std::io::Result<()> {
         .parse()
         .expect("Failed to parse GENESIS_BLOCK_HEIGHT");
 
+    let max_healthy_latency_ms = env::var("MAX_HEALTHY_LATENCY_MS")
+        .expect("Missing MAX_HEALTHY_LATENCY_MS env var")
+        .parse()
+        .expect("Failed to parse MAX_HEALTHY_LATENCY_MS");
+
     HttpServer::new(move || {
         // Configure CORS middleware
         let cors = Cors::default()
@@ -132,12 +138,14 @@ async fn main() -> std::io::Result<()> {
                 is_latest,
                 is_fresh,
                 archive_config: archive_config.clone(),
+                max_healthy_latency_ms,
             }))
             .wrap(cors)
             .wrap(middleware::Logger::new(
                 "%{r}a \"%r\"	%s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
             ))
             .wrap(tracing_actix_web::TracingLogger::default())
+            .service(api::health)
             .service(api_v0)
             .route("/", web::get().to(greet))
     })
