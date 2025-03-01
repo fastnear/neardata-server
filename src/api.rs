@@ -551,3 +551,53 @@ pub mod v0 {
         Ok(Some(block))
     }
 }
+
+#[get("/health")]
+pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, ServiceError> {
+    if !app_state.is_latest {
+        return Ok(HttpResponse::Ok().json(json!({"status": "ok"})));
+    }
+    let chain_id = app_state.chain_id;
+    let finality = Finality::Final;
+    let block_height =
+        cache::get_last_block_height(app_state.redis_client.clone(), chain_id, finality)
+            .await
+            .ok_or_else(|| {
+                ServiceError::CacheError(
+                    "The last block height is missing from the cache".to_string(),
+                )
+            })?;
+    match cache::get_block_and_last_block_height(
+        app_state.redis_client.clone(),
+        chain_id,
+        block_height,
+        finality,
+    )
+    .await?
+    {
+        (Some(block), _) => {
+            let block: serde_json::Value = serde_json::from_str(&block)
+                .map_err(|_| ServiceError::CacheError("Failed to parse the block".to_string()))?;
+            let timestamp = block["block"]["header"]["timestamp_nanosec"]
+                .as_str()
+                .ok_or_else(|| {
+                    ServiceError::CacheError("The block is missing a timestamp".to_string())
+                })?;
+            let t_nano = timestamp.parse::<u128>().unwrap_or(0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let sync_latency_ms = now.as_nanos().saturating_sub(t_nano) / 1_000_000;
+            if sync_latency_ms > app_state.max_healthy_latency_ms {
+                return Ok(HttpResponse::Ok().json(json!({"status": "unhealthy"})));
+            }
+        }
+        _ => {
+            return Err(ServiceError::CacheError(
+                "The block is not cached".to_string(),
+            ));
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(json!({"status": "ok"})))
+}
