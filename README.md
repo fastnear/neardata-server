@@ -89,6 +89,18 @@ Example:
 - Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888/chunk/0
 - Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000/chunk/0
 
+#### `v0/block/:block_height/shard/:shard_id`
+
+Returns a smaller part from the response including only the `shard` of the requested `shard_id` part of the JSON object.
+
+Example:
+
+- Genesis block (mainnet) https://mainnet.neardata.xyz/v0/block/9820210/shard/0
+- Regular block (mainnet) https://mainnet.neardata.xyz/v0/block/98765432/shard/0
+- Missing block (mainnet) https://mainnet.neardata.xyz/v0/block/115001861/shard/0
+- Genesis block (testnet) https://testnet.neardata.xyz/v0/block/42376888/shard/0
+- Regular block (testnet) https://testnet.neardata.xyz/v0/block/100000000/shard/0
+
 #### `/v0/block_opt/:block_height`
 
 Returns the optimistic block by block height.
