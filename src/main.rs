@@ -3,6 +3,7 @@ mod cache;
 mod reader;
 mod types;
 
+use actix_web::web::service;
 use dotenv::dotenv;
 use std::env;
 
@@ -126,7 +127,9 @@ async fn main() -> std::io::Result<()> {
             .service(api::v0::get_first_block)
             .service(api::v0::get_block)
             .service(api::v0::get_opt_block)
-            .service(api::v0::get_last_block);
+            .service(api::v0::get_last_block)
+            .service(api::v0::get_block_headers)
+            .service(api::v0::get_chunk);
         App::new()
             .app_data(web::Data::new(AppState {
                 redis_client: redis_client.clone(),
