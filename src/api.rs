@@ -3,8 +3,10 @@ use crate::reader::read_blocks;
 use crate::types::*;
 use crate::*;
 use actix_web::ResponseError;
+use reqwest::header::HeaderName;
 use serde_json::json;
 use std::fmt;
+use std::str::FromStr;
 use std::time::Duration;
 
 const TARGET_API: &str = "api";
@@ -18,6 +20,7 @@ const MAX_WAIT_BLOCKS: BlockHeight = 10;
 enum ServiceError {
     ArgumentError,
     CacheError(String),
+    InternalDataError,
 }
 
 impl From<redis::RedisError> for ServiceError {
@@ -31,6 +34,7 @@ impl fmt::Display for ServiceError {
         match *self {
             ServiceError::ArgumentError => write!(f, "Invalid argument"),
             ServiceError::CacheError(ref err) => write!(f, "Cache error: {}", err),
+            ServiceError::InternalDataError => write!(f, "Internal data error"),
         }
     }
 }
@@ -42,12 +46,45 @@ impl ResponseError for ServiceError {
             ServiceError::CacheError(ref err) => {
                 HttpResponse::InternalServerError().json(format!("Cache error: {}", err))
             }
+            ServiceError::InternalDataError => {
+                HttpResponse::InternalServerError().json("Internal data error")
+            }
         }
     }
 }
 
+fn arg<T: FromStr>(request: &HttpRequest, name: &str) -> Result<T, ServiceError> {
+    request
+        .match_info()
+        .get(name)
+        .unwrap()
+        .parse::<T>()
+        .map_err(|_| ServiceError::ArgumentError)
+}
+
+fn arg_finality(request: &HttpRequest) -> Finality {
+    if request.match_info().get("finality") == Some("_opt") {
+        Finality::Optimistic
+    } else {
+        Finality::Final
+    }
+}
+
+fn header(http_response: &HttpResponse, name: HeaderName) -> Option<String> {
+    Some(
+        http_response
+            .headers()
+            .get(name)?
+            .to_str()
+            .ok()?
+            .to_string(),
+    )
+}
+
 pub mod v0 {
     use actix_web::body::MessageBody;
+    use actix_web::http::header::HeaderValue;
+    use reqwest::StatusCode;
     use serde_json::Value;
 
     use super::*;
@@ -134,114 +171,114 @@ pub mod v0 {
             .finish())
     }
 
-    #[get("/block_opt/{block_height}")]
-    pub async fn get_opt_block(
-        request: HttpRequest,
-        app_state: web::Data<AppState>,
-    ) -> Result<impl Responder, ServiceError> {
-        let block_height = request
-            .match_info()
-            .get("block_height")
-            .unwrap()
-            .parse::<BlockHeight>()
-            .map_err(|_| ServiceError::ArgumentError)?;
-        get_block_inner(block_height, Finality::Optimistic, app_state).await
-    }
-
-    #[get("/block/{block_height}")]
+    #[get("/block{finality:(_opt)?}/{block_height}")]
     pub async fn get_block(
         request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
-        let block_height = request
-            .match_info()
-            .get("block_height")
-            .unwrap()
-            .parse::<BlockHeight>()
-            .map_err(|_| ServiceError::ArgumentError)?;
-        get_block_inner(block_height, Finality::Final, app_state).await
+        let finality = arg_finality(&request);
+        let block_height: BlockHeight = arg(&request, "block_height")?;
+        get_block_inner(block_height, finality, app_state).await
     }
 
-    #[get("/block/{block_height}/headers")]
+    #[get("/block{finality:(_opt)?}/{block_height}/headers")]
     pub async fn get_block_headers(
         request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
-        let block_height = request
-            .match_info()
-            .get("block_height")
-            .unwrap()
-            .parse::<BlockHeight>()
-            .map_err(|_| ServiceError::ArgumentError)?;
-        let response = get_block_inner(block_height, Finality::Final, app_state.clone()).await?;
+        let finality = arg_finality(&request);
+        let block_height: BlockHeight = arg(&request, "block_height")?;
+        let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        // We need to grab the CACHE_CONTROL header from the response and return it
-        let headers = &response.headers().clone();
-        let cache_control_header = headers
-            .get(header::CACHE_CONTROL)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-
-        let body_bytes = response.into_body().try_into_bytes().unwrap();
-        let block_json: Value =
-            serde_json::from_slice(&body_bytes).map_err(|_| ServiceError::ArgumentError)?;
-        let block_json = block_json.get("block").ok_or(ServiceError::ArgumentError)?;
-
-        Ok(HttpResponse::Ok()
-            .insert_header((header::CACHE_CONTROL, cache_control_header.to_string()))
-            .json(block_json))
+        redirect_or_map(response, "/headers", |block_json| {
+            Ok(block_json.get("block").cloned().unwrap_or(Value::Null))
+        })
     }
 
-    #[get("/block/{block_height}/chunk/{shard_id}")]
+    #[get("/block{finality:(_opt)?}/{block_height}/chunk/{shard_id}")]
     pub async fn get_chunk(
         request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
-        let block_height = request
-            .match_info()
-            .get("block_height")
-            .unwrap()
-            .parse::<BlockHeight>()
-            .map_err(|_| ServiceError::ArgumentError)?;
-        let shard_id = request
-            .match_info()
-            .get("shard_id")
-            .unwrap()
-            .parse::<u64>()
-            .map_err(|_| ServiceError::ArgumentError)?;
+        let finality = arg_finality(&request);
+        let block_height: BlockHeight = arg(&request, "block_height")?;
+        let shard_id: u64 = arg(&request, "shard_id")?;
 
-        let response = get_block_inner(block_height, Finality::Final, app_state.clone()).await?;
+        let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        // We need to grab the CACHE_CONTROL header from the response and return it
-        let headers = &response.headers().clone();
-        let cache_control_header = headers
-            .get(header::CACHE_CONTROL)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        redirect_or_map(response, &format!("/chunk/{shard_id}"), move |block_json| {
+            Ok(block_json
+                .get("shards")
+                .and_then(|shards| shards.as_array())
+                .and_then(|shards| {
+                    shards
+                        .iter()
+                        .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
+                        .and_then(|shard| shard.get("chunk"))
+                })
+                .cloned()
+                .unwrap_or(Value::Null))
+        })
+    }
 
-        let body_bytes = response.into_body().try_into_bytes().unwrap();
-        let block_json: Value =
-            serde_json::from_slice(&body_bytes).map_err(|_| ServiceError::ArgumentError)?;
+    #[get("/block{finality:(_opt)?}/{block_height}/shard/{shard_id}")]
+    pub async fn get_shard(
+        request: HttpRequest,
+        app_state: web::Data<AppState>,
+    ) -> Result<impl Responder, ServiceError> {
+        let finality = arg_finality(&request);
+        let block_height: BlockHeight = arg(&request, "block_height")?;
+        let shard_id: u64 = arg(&request, "shard_id")?;
 
-        // now we need to iterate over shards list in block_json and find the one with the right shard_id
-        let chunk_json = block_json
-            .get("shards")
-            .ok_or(ServiceError::ArgumentError)?
-            .as_array()
-            .ok_or(ServiceError::ArgumentError)?
-            .iter()
-            .find(|shard| shard["shard_id"].as_u64().unwrap() == shard_id)
-            .ok_or(ServiceError::ArgumentError)?;
-        // and we need the chunk from the shard
-        let chunk_json = chunk_json.get("chunk").ok_or(ServiceError::ArgumentError)?;
+        let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        Ok(HttpResponse::Ok()
-            .insert_header((header::CACHE_CONTROL, cache_control_header.to_string()))
-            .json(chunk_json))
+        redirect_or_map(response, &format!("/shard/{shard_id}"), move |block_json| {
+            Ok(block_json
+                .get("shards")
+                .and_then(|shards| shards.as_array())
+                .and_then(|shards| {
+                    shards
+                        .iter()
+                        .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
+                })
+                .cloned()
+                .unwrap_or(Value::Null))
+        })
+    }
+
+    fn redirect_or_map<F>(
+        mut response: HttpResponse,
+        suffix: &str,
+        f: F,
+    ) -> Result<impl Responder, ServiceError>
+    where
+        F: FnOnce(Value) -> Result<Value, ServiceError>,
+    {
+        match response.status() {
+            StatusCode::FOUND => {
+                let previous_location = header(&response, header::LOCATION).unwrap();
+
+                response.headers_mut().insert(
+                    header::LOCATION,
+                    HeaderValue::from_str(&format!("{}{}", previous_location, suffix)).unwrap(),
+                );
+                Ok(response)
+            }
+            StatusCode::OK => {
+                // We need to grab the CACHE_CONTROL header from the response and return it
+                let cache_control_header = header(&response, header::CACHE_CONTROL).unwrap();
+
+                let body_bytes = response.into_body().try_into_bytes().unwrap();
+                let block_json: Value = serde_json::from_slice(&body_bytes)
+                    .map_err(|_| ServiceError::InternalDataError)?;
+                f(block_json).and_then(|block_json| {
+                    Ok(HttpResponse::Ok()
+                        .insert_header((header::CACHE_CONTROL, cache_control_header))
+                        .json(block_json))
+                })
+            }
+            _ => Ok(response),
+        }
     }
 
     /// Retrieves a block based on the given block height and finality.
