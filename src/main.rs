@@ -22,14 +22,14 @@ pub struct ReadConfig {
 
 #[derive(Clone)]
 pub struct ArchiveConfig {
-    // Will have to rework that once there is more than 1 archive
-    pub archive_url: String,
-    // The latest archive node that has files
-    pub latest_url: String,
-    // The main node that has the latest block and doesn't have files. Keeps everything in memory.
-    pub fresh_url: String,
-    pub start_height: BlockHeight,
-    pub end_height: BlockHeight,
+    pub archive_boundaries: Vec<BlockHeight>,
+    pub domain_name: String,
+    /// The index of the archive boundary that this node is responsible for.
+    /// E.g. If there are 2 boundaries:
+    /// - `0` -> means from genesis to the first archive boundary (exclusive).
+    /// - `1` -> means from the first archive boundary to the second archive boundary (exclusive).
+    /// - `2` -> means from the second archive boundary to the blockchain head.
+    pub archive_index: usize,
 }
 
 #[derive(Clone)]
@@ -38,7 +38,10 @@ pub struct AppState {
     pub read_config: Option<ReadConfig>,
     pub chain_id: ChainId,
     pub genesis_block_height: BlockHeight,
+    /// Whether this node has the latest blocks and uses archive files.
+    /// If not, it means this is an archive node.
     pub is_latest: bool,
+    /// Whether this node has the freshest blocks, but doesn't use archive files
     pub is_fresh: bool,
     pub archive_config: Option<ArchiveConfig>,
     pub max_healthy_latency_ms: u128,
@@ -78,22 +81,21 @@ async fn main() -> std::io::Result<()> {
 
     let is_latest = env::var("IS_LATEST").map_or(true, |v| v == "true");
     let is_fresh = env::var("IS_FRESH").map_or(true, |v| v == "true");
-    let archive_config = if let Ok(archive_url) = env::var("ARCHIVE_URL") {
-        let start_height: BlockHeight = env::var("ARCHIVE_START_HEIGHT")
-            .expect("Missing ARCHIVE_START_HEIGHT env var")
+    let archive_config = if let Ok(archive_boundaries) = env::var("ARCHIVE_BOUNDARIES") {
+        let archive_boundaries: Vec<BlockHeight> = archive_boundaries
+            .split(',')
+            .map(|s| s.parse().expect("Failed to parse archive boundary"))
+            .collect();
+
+        let archive_index = env::var("ARCHIVE_INDEX")
+            .expect("Missing ARCHIVE_INDEX env var")
             .parse()
-            .expect("Failed to parse ARCHIVE_START_HEIGHT");
-        let end_height: BlockHeight = env::var("ARCHIVE_END_HEIGHT")
-            .expect("Missing ARCHIVE_END_HEIGHT env var")
-            .parse()
-            .expect("Failed to parse ARCHIVE_END_HEIGHT");
+            .expect("Failed to parse ARCHIVE_INDEX");
 
         Some(ArchiveConfig {
-            archive_url,
-            latest_url: env::var("LATEST_URL").expect("Missing LATEST_URL env var"),
-            fresh_url: env::var("FRESH_URL").expect("Missing FRESH_URL env var"),
-            start_height,
-            end_height,
+            archive_boundaries,
+            domain_name: env::var("DOMAIN_NAME").expect("Missing DOMAIN_NAME env var"),
+            archive_index,
         })
     } else {
         None

@@ -112,8 +112,8 @@ pub mod v0 {
                 .append_header((
                     header::LOCATION,
                     format!(
-                        "{}/v0/last_block/{}",
-                        app_state.archive_config.as_ref().unwrap().fresh_url,
+                        "https://{}/v0/last_block/{}",
+                        app_state.archive_config.as_ref().unwrap().domain_name,
                         finality
                     ),
                 ))
@@ -149,7 +149,7 @@ pub mod v0 {
     ) -> Result<impl Responder, ServiceError> {
         if let Some(archive_config) = &app_state.archive_config {
             // Redirect to archive
-            if app_state.is_latest {
+            if archive_config.archive_index != 0 {
                 return Ok(HttpResponse::Found()
                     .append_header((
                         header::CACHE_CONTROL,
@@ -158,8 +158,8 @@ pub mod v0 {
                     .append_header((
                         header::LOCATION,
                         format!(
-                            "{}/v0/block/{}",
-                            archive_config.archive_url, app_state.genesis_block_height
+                            "https://a0.{}/v0/block/{}",
+                            archive_config.domain_name, app_state.genesis_block_height
                         ),
                     ))
                     .finish());
@@ -409,22 +409,8 @@ pub mod v0 {
         app_state: &web::Data<AppState>,
     ) -> Option<HttpResponse> {
         if let Some(archive_config) = &app_state.archive_config {
-            if app_state.is_latest && block_height < archive_config.end_height {
-                return Some(
-                    HttpResponse::Found()
-                        .append_header((
-                            header::CACHE_CONTROL,
-                            format!("public, max-age={}", 24 * 60 * 60),
-                        ))
-                        .append_header((
-                            header::LOCATION,
-                            format!("{}/v0/block/{}", archive_config.archive_url, block_height),
-                        ))
-                        .finish(),
-                );
-            } else if !app_state.is_latest
-                && (block_height >= archive_config.end_height || finality == Finality::Optimistic)
-            {
+            if !app_state.is_fresh && finality == Finality::Optimistic {
+                // Redirect to the fresh server
                 return Some(
                     HttpResponse::Found()
                         .append_header((
@@ -434,10 +420,33 @@ pub mod v0 {
                         .append_header((
                             header::LOCATION,
                             format!(
-                                "{}/v0/block{}/{}",
-                                archive_config.fresh_url,
+                                "https://{}/v0/block{}/{}",
+                                archive_config.domain_name,
                                 finality_suffix(finality),
                                 block_height
+                            ),
+                        ))
+                        .finish(),
+                );
+            }
+            // Find the required archive index
+            let index = archive_config
+                .archive_boundaries
+                .iter()
+                .position(|&x| block_height < x)
+                .unwrap_or(archive_config.archive_boundaries.len());
+            if index != archive_config.archive_index {
+                return Some(
+                    HttpResponse::Found()
+                        .append_header((
+                            header::CACHE_CONTROL,
+                            format!("public, max-age={}", 24 * 60 * 60),
+                        ))
+                        .append_header((
+                            header::LOCATION,
+                            format!(
+                                "https://a{}.{}/v0/block/{}",
+                                index, archive_config.domain_name, block_height
                             ),
                         ))
                         .finish(),
@@ -561,6 +570,10 @@ pub mod v0 {
         // If the read-path is not set, it means the server doesn't use archive files.
         // We have to redirect to the latest server with files.
         if app_state.read_config.is_none() {
+            let archive_config = app_state
+                .archive_config
+                .as_ref()
+                .expect("Missing archive config without local files config");
             return Ok(Some(BlockOrResponse::Response(
                 HttpResponse::Found()
                     .append_header((
@@ -570,12 +583,9 @@ pub mod v0 {
                     .append_header((
                         header::LOCATION,
                         format!(
-                            "{}/v0/block/{}",
-                            app_state
-                                .archive_config
-                                .as_ref()
-                                .expect("Missing archive config without local files config")
-                                .latest_url,
+                            "https://a{}.{}/v0/block/{}",
+                            archive_config.archive_boundaries.len(),
+                            archive_config.domain_name,
                             block_height
                         ),
                     ))
