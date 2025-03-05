@@ -129,14 +129,14 @@
     }
     // Initial block
     const fetcher = async (blockType, currentNonce) => {
-      const initialBlock = await fetchUntilSuccess(rootUrl + `/v0/last_block/${blockType}`, currentNonce);
-      const startBlockHeight = initialBlock.block.header.height;
+      const initialHeaders = await fetchUntilSuccess(rootUrl + `/v0/last_block/${blockType}/headers`, currentNonce);
+      const startBlockHeight = initialHeaders.header.height;
       // Only stream for 300 blocks ~ 5 minute
       for (let i = 1; nonce === currentNonce && i <= 300; ++i) {
         const blockHeight = startBlockHeight + i;
-        const block = await fetchUntilSuccess(rootUrl + `/v0/${blockType === "final" ? "block" : "block_opt"}/${blockHeight}`, currentNonce);
-        if (nonce === currentNonce && block) {
-          const blockTime = parseFloat(block.block.header.timestamp_nanosec) / 1e9;
+        const headers = await fetchUntilSuccess(rootUrl + `/v0/${blockType === "final" ? "block" : "block_opt"}/${blockHeight}/headers`, currentNonce);
+        if (nonce === currentNonce && headers) {
+          const blockTime = parseFloat(headers.header.timestamp_nanosec) / 1e9;
           const time = new Date().getTime() / 1e3;
           const latency = time - blockTime;
           chart.data.labels.push(blockHeight);

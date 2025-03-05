@@ -88,16 +88,15 @@ fn header(http_response: &HttpResponse, name: HeaderName) -> Option<String> {
 }
 
 pub mod v0 {
+    use super::*;
+    use crate::cache::finality_suffix;
+    use crate::reader::archive_filename;
     use actix_web::body::MessageBody;
     use actix_web::http::header::HeaderValue;
     use reqwest::StatusCode;
     use serde_json::Value;
 
-    use super::*;
-    use crate::cache::finality_suffix;
-    use crate::reader::archive_filename;
-
-    #[get("/last_block/{finality}")]
+    #[get("/last_block/{finality}{suffix:/?.*}")]
     pub async fn get_last_block(
         request: HttpRequest,
         app_state: web::Data<AppState>,
@@ -106,15 +105,17 @@ pub mod v0 {
         let finality =
             Finality::try_from(request.match_info().get("finality").unwrap().to_string())
                 .map_err(|_| ServiceError::ArgumentError)?;
+        let suffix = request.match_info().get("suffix").unwrap_or_default();
         if !app_state.is_fresh {
             // Redirect to the fresh url
             return Ok(HttpResponse::Found()
                 .append_header((
                     header::LOCATION,
                     format!(
-                        "https://{}/v0/last_block/{}",
+                        "https://{}/v0/last_block/{}{}",
                         app_state.archive_config.as_ref().unwrap().domain_name,
-                        finality
+                        finality,
+                        suffix
                     ),
                 ))
                 .finish());
@@ -134,9 +135,10 @@ pub mod v0 {
             .append_header((
                 header::LOCATION,
                 format!(
-                    "/v0/block{}/{}",
+                    "/v0/block{}/{}{}",
                     finality_suffix(finality),
-                    last_block_height
+                    last_block_height,
+                    suffix
                 ),
             ))
             .finish())
