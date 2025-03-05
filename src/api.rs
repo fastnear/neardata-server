@@ -326,13 +326,14 @@ pub mod v0 {
             retrieve_block_from_cache_or_archive(block_height, finality, &app_state, chain_id)
                 .await?;
 
-        let block = match block_or_response {
+        let mut block = match block_or_response {
             BlockOrResponse::Block(block) => block,
             BlockOrResponse::Response(response) => return Ok(response),
         };
 
         // Determine the cache duration based on whether the block is empty
         let cache_duration = if block.is_empty() {
+            block = "null".to_string();
             Duration::from_secs(24 * 60 * 60)
         } else {
             DEFAULT_CACHE_DURATION
