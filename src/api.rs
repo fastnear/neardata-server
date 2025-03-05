@@ -23,6 +23,12 @@ enum ServiceError {
     InternalDataError,
 }
 
+#[derive(Debug)]
+enum BlockOrResponse {
+    Block(String),
+    Response(HttpResponse),
+}
+
 impl From<redis::RedisError> for ServiceError {
     fn from(_err: redis::RedisError) -> Self {
         ServiceError::CacheError("Redis error".to_string())
@@ -316,9 +322,14 @@ pub mod v0 {
         tracing::debug!(target: TARGET_API, "Retrieving {} block for block_height: {}", finality, block_height);
 
         // Retrieve the block from the cache or archive
-        let block =
+        let block_or_response =
             retrieve_block_from_cache_or_archive(block_height, finality, &app_state, chain_id)
                 .await?;
+
+        let block = match block_or_response {
+            BlockOrResponse::Block(block) => block,
+            BlockOrResponse::Response(response) => return Ok(response),
+        };
 
         // Determine the cache duration based on whether the block is empty
         let cache_duration = if block.is_empty() {
@@ -452,7 +463,7 @@ pub mod v0 {
         finality: Finality,
         app_state: &web::Data<AppState>,
         chain_id: ChainId,
-    ) -> Result<String, ServiceError> {
+    ) -> Result<BlockOrResponse, ServiceError> {
         loop {
             match cache::get_block_and_last_block_height(
                 app_state.redis_client.clone(),
@@ -462,7 +473,7 @@ pub mod v0 {
             )
             .await?
             {
-                (Some(block), _) => return Ok(block),
+                (Some(block), _) => return Ok(BlockOrResponse::Block(block)),
                 (_, None) => {
                     return Err(ServiceError::CacheError(
                         "The last block height is missing from the cache".to_string(),
@@ -504,16 +515,15 @@ pub mod v0 {
         finality: Finality,
         app_state: &web::Data<AppState>,
         chain_id: ChainId,
-    ) -> Result<Option<String>, ServiceError> {
+    ) -> Result<Option<BlockOrResponse>, ServiceError> {
         if app_state.is_latest {
             if block_height > last_block_height + MAX_WAIT_BLOCKS {
-                return Ok(Some(
-                    json!({
+                return Ok(Some(BlockOrResponse::Response(
+                    HttpResponse::NotFound().json(json!({
                         "error": "The block is too far in the future",
                         "type": "BLOCK_DOES_NOT_EXIST"
-                    })
-                    .to_string(),
-                ));
+                    })),
+                )));
             }
 
             if block_height > last_block_height {
@@ -536,25 +546,44 @@ pub mod v0 {
         }
 
         if finality == Finality::Optimistic {
-            return Ok(Some(
-                json!({
-                    "error": "The block is not cached",
-                    "type": "BLOCK_NOT_CACHED"
-                })
-                .to_string(),
-            ));
+            return Ok(Some(BlockOrResponse::Response(
+                HttpResponse::Found()
+                    .append_header((
+                        header::CACHE_CONTROL,
+                        format!("public, max-age={}", 24 * 60 * 60),
+                    ))
+                    .append_header((header::LOCATION, format!("/v0/block/{}", block_height)))
+                    .finish(),
+            )));
         }
 
+        // If the read-path is not set, it means the server doesn't use archive files.
+        // We have to redirect to the latest server with files.
         if app_state.read_config.is_none() {
-            return Ok(Some(
-                json!({
-                    "error": "The block is not cached and no read config is available",
-                    "type": "BLOCK_NOT_CACHED_NO_READ_CONFIG"
-                })
-                .to_string(),
-            ));
+            return Ok(Some(BlockOrResponse::Response(
+                HttpResponse::Found()
+                    .append_header((
+                        header::CACHE_CONTROL,
+                        format!("public, max-age={}", 24 * 60 * 60),
+                    ))
+                    .append_header((
+                        header::LOCATION,
+                        format!(
+                            "{}/v0/block/{}",
+                            app_state
+                                .archive_config
+                                .as_ref()
+                                .expect("Missing archive config without local files config")
+                                .latest_url,
+                            block_height
+                        ),
+                    ))
+                    .finish(),
+            )));
         }
 
+        // Before reading blocks we'll check the last time the archive was accessed and
+        // indicate we want to read it.
         let archive_fn = archive_filename(
             &app_state.read_config.as_ref().unwrap(),
             chain_id,
@@ -585,7 +614,7 @@ pub mod v0 {
             })
             .unwrap();
         set_multiple_blocks_async(app_state.redis_client.clone(), chain_id, finality, blocks);
-        Ok(Some(block))
+        Ok(Some(BlockOrResponse::Block(block)))
     }
 }
 
