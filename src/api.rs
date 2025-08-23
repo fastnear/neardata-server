@@ -106,6 +106,13 @@ pub mod v0 {
             Finality::try_from(request.match_info().get("finality").unwrap().to_string())
                 .map_err(|_| ServiceError::ArgumentError)?;
         let suffix = request.match_info().get("suffix").unwrap_or_default();
+        // Preserve the query string if any
+        let query_string = request.query_string();
+        let suffix = if query_string.is_empty() {
+            suffix.to_string()
+        } else {
+            format!("{}?{}", suffix, query_string)
+        };
         if !app_state.is_fresh {
             // Redirect to the fresh url
             return Ok(HttpResponse::Found()
@@ -146,9 +153,16 @@ pub mod v0 {
 
     #[get("/first_block")]
     pub async fn get_first_block(
-        _request: HttpRequest,
+        request: HttpRequest,
         app_state: web::Data<AppState>,
     ) -> Result<impl Responder, ServiceError> {
+        // Preserve the query string if any
+        let query_string = request.query_string();
+        let suffix = if query_string.is_empty() {
+            "".to_string()
+        } else {
+            format!("?{}", query_string)
+        };
         if let Some(archive_config) = &app_state.archive_config {
             // Redirect to archive
             if archive_config.archive_index != 0 {
@@ -160,8 +174,8 @@ pub mod v0 {
                     .append_header((
                         header::LOCATION,
                         format!(
-                            "https://a0.{}/v0/block/{}",
-                            archive_config.domain_name, app_state.genesis_block_height
+                            "https://a0.{}/v0/block/{}{}",
+                            archive_config.domain_name, app_state.genesis_block_height, suffix
                         ),
                     ))
                     .finish());
@@ -174,7 +188,7 @@ pub mod v0 {
             ))
             .append_header((
                 header::LOCATION,
-                format!("/v0/block/{}", app_state.genesis_block_height),
+                format!("/v0/block/{}{}", app_state.genesis_block_height, suffix),
             ))
             .finish())
     }
@@ -198,7 +212,7 @@ pub mod v0 {
         let block_height: BlockHeight = arg(&request, "block_height")?;
         let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        redirect_or_map(response, "/headers", |block_json| {
+        redirect_or_map(request, response, "/headers", |block_json| {
             Ok(block_json.get("block").cloned().unwrap_or(Value::Null))
         })
     }
@@ -214,19 +228,24 @@ pub mod v0 {
 
         let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        redirect_or_map(response, &format!("/chunk/{shard_id}"), move |block_json| {
-            Ok(block_json
-                .get("shards")
-                .and_then(|shards| shards.as_array())
-                .and_then(|shards| {
-                    shards
-                        .iter()
-                        .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
-                        .and_then(|shard| shard.get("chunk"))
-                })
-                .cloned()
-                .unwrap_or(Value::Null))
-        })
+        redirect_or_map(
+            request,
+            response,
+            &format!("/chunk/{shard_id}"),
+            move |block_json| {
+                Ok(block_json
+                    .get("shards")
+                    .and_then(|shards| shards.as_array())
+                    .and_then(|shards| {
+                        shards
+                            .iter()
+                            .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
+                            .and_then(|shard| shard.get("chunk"))
+                    })
+                    .cloned()
+                    .unwrap_or(Value::Null))
+            },
+        )
     }
 
     #[get("/block{finality:(_opt)?}/{block_height}/shard/{shard_id}")]
@@ -240,21 +259,27 @@ pub mod v0 {
 
         let response = get_block_inner(block_height, finality, app_state.clone()).await?;
 
-        redirect_or_map(response, &format!("/shard/{shard_id}"), move |block_json| {
-            Ok(block_json
-                .get("shards")
-                .and_then(|shards| shards.as_array())
-                .and_then(|shards| {
-                    shards
-                        .iter()
-                        .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
-                })
-                .cloned()
-                .unwrap_or(Value::Null))
-        })
+        redirect_or_map(
+            request,
+            response,
+            &format!("/shard/{shard_id}"),
+            move |block_json| {
+                Ok(block_json
+                    .get("shards")
+                    .and_then(|shards| shards.as_array())
+                    .and_then(|shards| {
+                        shards
+                            .iter()
+                            .find(|shard| shard["shard_id"].as_u64() == Some(shard_id))
+                    })
+                    .cloned()
+                    .unwrap_or(Value::Null))
+            },
+        )
     }
 
     fn redirect_or_map<F>(
+        request: HttpRequest,
         mut response: HttpResponse,
         suffix: &str,
         f: F,
@@ -265,6 +290,13 @@ pub mod v0 {
         match response.status() {
             StatusCode::FOUND => {
                 let previous_location = header(&response, header::LOCATION).unwrap();
+                // Preserve the query string if any
+                let query_string = request.query_string();
+                let suffix = if query_string.is_empty() {
+                    suffix.to_string()
+                } else {
+                    format!("{}?{}", suffix, query_string)
+                };
 
                 response.headers_mut().insert(
                     header::LOCATION,
