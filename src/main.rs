@@ -55,6 +55,7 @@ async fn greet() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    #[allow(deprecated)]
     openssl_probe::init_ssl_cert_env_vars();
     dotenv().ok();
 
