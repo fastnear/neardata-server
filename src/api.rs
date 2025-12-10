@@ -200,7 +200,9 @@ pub mod v0 {
     ) -> Result<impl Responder, ServiceError> {
         let finality = arg_finality(&request);
         let block_height: BlockHeight = arg(&request, "block_height")?;
-        get_block_inner(block_height, finality, app_state).await
+        let response = get_block_inner(block_height, finality, app_state).await?;
+
+        redirect_or_map(request, response, "", |block_json| Ok(block_json))
     }
 
     #[get("/block{finality:(_opt)?}/{block_height}/headers")]
@@ -210,7 +212,7 @@ pub mod v0 {
     ) -> Result<impl Responder, ServiceError> {
         let finality = arg_finality(&request);
         let block_height: BlockHeight = arg(&request, "block_height")?;
-        let response = get_block_inner(block_height, finality, app_state.clone()).await?;
+        let response = get_block_inner(block_height, finality, app_state).await?;
 
         redirect_or_map(request, response, "/headers", |block_json| {
             Ok(block_json.get("block").cloned().unwrap_or(Value::Null))
@@ -226,7 +228,7 @@ pub mod v0 {
         let block_height: BlockHeight = arg(&request, "block_height")?;
         let shard_id: u64 = arg(&request, "shard_id")?;
 
-        let response = get_block_inner(block_height, finality, app_state.clone()).await?;
+        let response = get_block_inner(block_height, finality, app_state).await?;
 
         redirect_or_map(
             request,
