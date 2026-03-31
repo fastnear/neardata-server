@@ -22,12 +22,38 @@ The server provides the following endpoints:
 - `/v0/last_block/final` - Redirects to the latest finalized block.
 - `/v0/last_block/optimistic` - Redirects to the latest optimistic block.
 
+## Recommended: Rust Crate
+
+The best option to consume Neardata is using the Rust crate: [fastnear-neardata-fetcher](https://crates.io/crates/fastnear-neardata-fetcher).
+Source code is available at [github.com/fastnear/libs/tree/main/neardata-fetcher](https://github.com/fastnear/libs/tree/main/neardata-fetcher).
+
 ## Usage
 
 The server is free to use and doesn't require any authentication. The bandwidth is limited to 1 Gbps, so you may
 experience throttling if there are too many parallel requests.
 We use caching to reduce the load on the server and improve the response time, but it would more likely to be useful for
 the latest data.
+
+### Rate Limits
+
+The current rate limit is **180 requests per minute per IP**.
+
+To increase your rate limits, get a subscription at [https://fastnear.com/](https://fastnear.com/).
+
+### Authentication
+
+To authenticate your requests with a FastNear Subscription API key, attach the following query string to the URL:
+
+```
+?apiKey={API_KEY}
+```
+
+For example:
+```
+https://mainnet.neardata.xyz/v0/block/98765432?apiKey=YOUR_API_KEY
+```
+
+> **Note:** Authentication using the `Authorization: Bearer` header requires you to manually handle redirects, since the redirect URL will not pass the header through and the redirected request will not be authenticated.
 
 To index historical, you may read data in a sequential manner, starting from the block you need or from the genesis
 block (`9820210` for mainnet) and moving forward up to the final block.

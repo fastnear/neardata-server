@@ -7,11 +7,15 @@
   <title>NEAR Data Server by FASTNEAR</title>
   <style>
     html {
-      max-width: 70ch;
+      max-width: 80ch;
       padding: 3em 1em;
       margin: auto;
       line-height: 1.75;
       font-size: 1.25em;
+    }
+
+    code {
+      color: #ff2200;
     }
 
     #chart {
@@ -165,6 +169,23 @@
 
   </script>
 </div>
+
+<h2>Recommended: Rust Crate</h2>
+<p>The best option to consume Neardata is using the Rust crate:
+  <a href='https://crates.io/crates/fastnear-neardata-fetcher'>fastnear-neardata-fetcher</a>.<br/>
+  Source code is available at
+  <a href='https://github.com/fastnear/libs/tree/main/neardata-fetcher'>github.com/fastnear/libs/tree/main/neardata-fetcher</a>.
+</p>
+
+<h2>Rate Limits &amp; Authentication</h2>
+<p>The public access rate limit is <strong>180 requests per minute per IP</strong>.</p>
+<p>To increase your rate limits, get a subscription at <a href='https://fastnear.com/'>https://fastnear.com/</a>.</p>
+<p>To authenticate your requests with a FastNear Subscription API key, attach the following query string to the URL:
+  <code>?apiKey={API_KEY}</code></p>
+<p>Example: <a href="/v0/block/98765432?apiKey=YOUR_API_KEY">/v0/block/98765432?apiKey=YOUR_API_KEY</a></p>
+<p><strong>Note:</strong> Authentication using the <code>Authorization: Bearer</code> header requires you to manually
+  handle redirects,
+  since the redirect URL will not pass the header through and the redirected request will not be authenticated.</p>
 
 <h2>API</h2>
 <h3>GET /v0/block</h3>

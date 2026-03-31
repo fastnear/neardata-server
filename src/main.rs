@@ -13,6 +13,7 @@ use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer
 use tracing_subscriber::EnvFilter;
 
 pub static INDEX_HTML: &str = include_str!("../static/index.html");
+pub static SKILL_MD: &str = include_str!("../static/skill.md");
 
 #[derive(Clone)]
 pub struct ReadConfig {
@@ -51,6 +52,12 @@ async fn greet() -> impl Responder {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(INDEX_HTML)
+}
+
+async fn skill() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type("text/markdown; charset=utf-8")
+        .body(SKILL_MD)
 }
 
 #[actix_web::main]
@@ -151,6 +158,8 @@ async fn main() -> std::io::Result<()> {
             .service(api::health)
             .service(api_v0)
             .route("/", web::get().to(greet))
+            .route("/skill.md", web::get().to(skill))
+            .route("/SKILL.md", web::get().to(skill))
     })
     .bind(format!("127.0.0.1:{}", env::var("PORT").unwrap()))?
     .run()
