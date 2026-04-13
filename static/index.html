@@ -180,9 +180,10 @@
 <h2>Rate Limits &amp; Authentication</h2>
 <p>The public access rate limit is <strong>180 requests per minute per IP</strong>.</p>
 <p>To increase your rate limits, get a subscription at <a href='https://fastnear.com/'>https://fastnear.com/</a>.</p>
-<p>To authenticate your requests with a FastNear Subscription API key, attach the following query string to the URL:
+<p>To authenticate your requests with a FastNEAR Subscription API key, attach the following query string to the URL:
   <code>?apiKey={API_KEY}</code></p>
 <p>Example: <a href="/v0/block/98765432?apiKey=YOUR_API_KEY">/v0/block/98765432?apiKey=YOUR_API_KEY</a></p>
+<p>Invalid API keys may return <code>401 Unauthorized</code> before the request reaches the neardata application.</p>
 <p><strong>Note:</strong> Authentication using the <code>Authorization: Bearer</code> header requires you to manually
   handle redirects,
   since the redirect URL will not pass the header through and the redirected request will not be authenticated.</p>
@@ -196,6 +197,8 @@
   <li> If the block is not produced yet, but close to the current finalized block,
     the server will wait for the block to be produced and return it.
   </li>
+  <li> Depending on deployment topology, this route may redirect to the host that owns the canonical archive range.
+  </li>
   <li> The difference from NEAR Lake data is each block is served as a single
     JSON object, instead of the block and shards. Another benefit, is we include
     the <code>tx_hash</code> for every receipt in the <code>receipt_execution_outcomes</code>.
@@ -207,8 +210,8 @@
 
 <h3>GET /v0/block/:block_height/headers</h3>
 
-<p>Logic is similar to the <code>GET /v0/block/</code> but returns only the <code>.block</code> key from the big
-  response. This will include the block header with chunk headers</p>
+<p>Logic is similar to the <code>GET /v0/block/</code> route but returns the top-level <code>block</code> object from
+  the full response, including the block header and chunk summaries.</p>
 
 <p>Example: <a href='/v0/block/100000000/headers'>/v0/block/100000000/headers</a></p>
 
@@ -225,7 +228,8 @@
 <p>Example: <a href='/v0/block/100000000/shard/0'>/v0/block/100000000/shard/0</a></p>
 
 <h3>GET /v0/block_opt</h3>
-<p>Returns the optimistic block by block height or redirects to the finalized block.</p>
+<p>Returns the optimistic block by block height or redirects to the canonical finalized or archive URL when the
+  deployment cannot serve it directly.</p>
 
 <p>Example: <a href='/v0/block_opt/122000000'>/v0/block_opt/122000000</a></p>
 

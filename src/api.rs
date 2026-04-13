@@ -2,9 +2,9 @@ use crate::cache::set_multiple_blocks_async;
 use crate::reader::read_blocks;
 use crate::types::*;
 use crate::*;
-use actix_web::ResponseError;
+use actix_web::http::header;
+use actix_web::{get, HttpRequest, HttpResponse, Responder, ResponseError};
 use reqwest::header::HeaderName;
-use serde_json::json;
 use std::fmt;
 use std::str::FromStr;
 use std::time::Duration;
@@ -406,10 +406,10 @@ pub mod v0 {
                         header::CACHE_CONTROL,
                         format!("public, max-age={}", 24 * 60 * 60),
                     ))
-                    .json(json!({
-                        "error": "Block height is too high",
-                        "type": "BLOCK_HEIGHT_TOO_HIGH"
-                    })),
+                    .json(BlockErrorResponse::new(
+                        "Block height is too high",
+                        BlockErrorType::BlockHeightTooHigh,
+                    )),
             );
         }
         if block_height < app_state.genesis_block_height {
@@ -419,10 +419,10 @@ pub mod v0 {
                         header::CACHE_CONTROL,
                         format!("public, max-age={}", 24 * 60 * 60),
                     ))
-                    .json(json!({
-                        "error": "Block height is before the genesis",
-                        "type": "BLOCK_HEIGHT_TOO_LOW"
-                    })),
+                    .json(BlockErrorResponse::new(
+                        "Block height is before the genesis",
+                        BlockErrorType::BlockHeightTooLow,
+                    )),
             );
         }
         None
@@ -565,10 +565,10 @@ pub mod v0 {
         if app_state.is_latest {
             if block_height > last_block_height + MAX_WAIT_BLOCKS {
                 return Ok(Some(BlockOrResponse::Response(
-                    HttpResponse::NotFound().json(json!({
-                        "error": "The block is too far in the future",
-                        "type": "BLOCK_DOES_NOT_EXIST"
-                    })),
+                    HttpResponse::NotFound().json(BlockErrorResponse::new(
+                        "The block is too far in the future",
+                        BlockErrorType::BlockDoesNotExist,
+                    )),
                 )));
             }
 
@@ -668,7 +668,9 @@ pub mod v0 {
 #[get("/health")]
 pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, ServiceError> {
     if !app_state.is_latest {
-        return Ok(HttpResponse::Ok().json(json!({"status": "ok"})));
+        return Ok(HttpResponse::Ok().json(HealthResponse {
+            status: "ok".to_string(),
+        }));
     }
     let chain_id = app_state.chain_id;
     let finality = Finality::Final;
@@ -702,7 +704,9 @@ pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, Se
                 .unwrap_or_default();
             let sync_latency_ms = now.as_nanos().saturating_sub(t_nano) / 1_000_000;
             if sync_latency_ms > app_state.max_healthy_latency_ms {
-                return Ok(HttpResponse::Ok().json(json!({"status": "unhealthy"})));
+                return Ok(HttpResponse::Ok().json(HealthResponse {
+                    status: "unhealthy".to_string(),
+                }));
             }
         }
         _ => {
@@ -712,5 +716,7 @@ pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, Se
         }
     }
 
-    Ok(HttpResponse::Ok().json(json!({"status": "ok"})))
+    Ok(HttpResponse::Ok().json(HealthResponse {
+        status: "ok".to_string(),
+    }))
 }

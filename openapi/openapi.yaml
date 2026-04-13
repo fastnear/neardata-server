@@ -1,0 +1,524 @@
+components:
+  schemas:
+    BlockErrorResponse:
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+        type:
+          $ref: '#/components/schemas/BlockErrorType'
+      required:
+      - error
+      - type
+      type: object
+    BlockErrorType:
+      enum:
+      - BLOCK_HEIGHT_TOO_HIGH
+      - BLOCK_HEIGHT_TOO_LOW
+      - BLOCK_DOES_NOT_EXIST
+      type: string
+    HealthResponse:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+      - status
+      type: object
+info:
+  description: Cached and archived NEAR block data with redirect helpers for first-block and latest-block workflows. Some block-family routes may redirect depending on archive or freshness topology.
+  title: NEAR Data API
+  version: 3.0.3
+openapi: 3.0.3
+paths:
+  /health:
+    get:
+      description: Returns `ok` when the current deployment is healthy and `unhealthy` when the latest indexed block is too stale. Invalid API keys can be rejected upstream before the request reaches the app.
+      operationId: get_health
+      parameters:
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              example:
+                status: ok
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+          description: Health payload
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Get service health
+      tags:
+      - system
+      x-fastnear-slug: health
+      x-fastnear-title: NEAR Data API - Health
+  /v0/block/{block_height}:
+    get:
+      description: Returns the finalized block document for the requested height, or `null` when the block does not exist within the requested archive segment. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      operationId: get_block
+      parameters:
+      - description: NEAR block height to retrieve.
+        example: '9820210'
+        in: path
+        name: block_height
+        required: true
+        schema:
+          type: string
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Full block document as served by neardata, including `block` and `shards`.
+                nullable: true
+                type: object
+          description: Requested document, or `null` when the selected slice is absent
+        '302':
+          description: Redirect to a canonical archive or finalized block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '404':
+          content:
+            application/json:
+              example:
+                error: The block does not exist in this archive range
+                type: BLOCK_DOES_NOT_EXIST
+              schema:
+                $ref: '#/components/schemas/BlockErrorResponse'
+          description: Structured block-height error
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Fetch a finalized block by height
+      tags:
+      - blocks
+      x-fastnear-slug: block
+      x-fastnear-title: NEAR Data API - Block
+  /v0/block/{block_height}/chunk/{shard_id}:
+    get:
+      description: Returns the chunk object for the requested shard ID, or `null` when that chunk is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      operationId: get_chunk
+      parameters:
+      - description: NEAR block height to retrieve.
+        example: '9820210'
+        in: path
+        name: block_height
+        required: true
+        schema:
+          type: string
+      - description: Shard ID whose chunk should be returned.
+        example: '0'
+        in: path
+        name: shard_id
+        required: true
+        schema:
+          type: string
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Chunk object for the requested shard ID.
+                nullable: true
+                type: object
+          description: Requested document, or `null` when the selected slice is absent
+        '302':
+          description: Redirect to a canonical archive or finalized block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '404':
+          content:
+            application/json:
+              example:
+                error: The block does not exist in this archive range
+                type: BLOCK_DOES_NOT_EXIST
+              schema:
+                $ref: '#/components/schemas/BlockErrorResponse'
+          description: Structured block-height error
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Fetch one chunk from a finalized block
+      tags:
+      - blocks
+      x-fastnear-slug: block_chunk
+      x-fastnear-title: NEAR Data API - Block Chunk
+  /v0/block/{block_height}/headers:
+    get:
+      description: Returns the `block` object extracted from the full block response, not just the nested `header` sub-object. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      operationId: get_block_headers
+      parameters:
+      - description: NEAR block height to retrieve.
+        example: '9820210'
+        in: path
+        name: block_height
+        required: true
+        schema:
+          type: string
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Block-level object returned by `/headers`, corresponding to the full response's `block` field.
+                nullable: true
+                type: object
+          description: Requested document, or `null` when the selected slice is absent
+        '302':
+          description: Redirect to a canonical archive or finalized block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '404':
+          content:
+            application/json:
+              example:
+                error: The block does not exist in this archive range
+                type: BLOCK_DOES_NOT_EXIST
+              schema:
+                $ref: '#/components/schemas/BlockErrorResponse'
+          description: Structured block-height error
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Fetch the block-level object for a finalized block
+      tags:
+      - blocks
+      x-fastnear-slug: block_headers
+      x-fastnear-title: NEAR Data API - Block Headers
+  /v0/block/{block_height}/shard/{shard_id}:
+    get:
+      description: Returns the shard object for the requested shard ID, or `null` when that shard is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      operationId: get_shard
+      parameters:
+      - description: NEAR block height to retrieve.
+        example: '9820210'
+        in: path
+        name: block_height
+        required: true
+        schema:
+          type: string
+      - description: Shard ID to return.
+        example: '0'
+        in: path
+        name: shard_id
+        required: true
+        schema:
+          type: string
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Shard object for the requested shard ID.
+                nullable: true
+                type: object
+          description: Requested document, or `null` when the selected slice is absent
+        '302':
+          description: Redirect to a canonical archive or finalized block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '404':
+          content:
+            application/json:
+              example:
+                error: The block does not exist in this archive range
+                type: BLOCK_DOES_NOT_EXIST
+              schema:
+                $ref: '#/components/schemas/BlockErrorResponse'
+          description: Structured block-height error
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Fetch one shard from a finalized block
+      tags:
+      - blocks
+      x-fastnear-slug: block_shard
+      x-fastnear-title: NEAR Data API - Block Shard
+  /v0/block_opt/{block_height}:
+    get:
+      description: Returns an optimistic block document when the deployment can serve it directly. Older or archive-only heights may redirect to a canonical finalized or archive URL instead.
+      operationId: get_block_optimistic
+      parameters:
+      - description: NEAR block height to retrieve.
+        example: '9820210'
+        in: path
+        name: block_height
+        required: true
+        schema:
+          type: string
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Full block document as served by neardata, including `block` and `shards`.
+                nullable: true
+                type: object
+          description: Requested document, or `null` when the selected slice is absent
+        '302':
+          description: Redirect to a canonical archive or finalized block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '404':
+          content:
+            application/json:
+              example:
+                error: The block does not exist in this archive range
+                type: BLOCK_DOES_NOT_EXIST
+              schema:
+                $ref: '#/components/schemas/BlockErrorResponse'
+          description: Structured block-height error
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Fetch an optimistic block by height
+      tags:
+      - blocks
+      x-fastnear-slug: block_optimistic
+      x-fastnear-title: NEAR Data API - Optimistic Block
+  /v0/first_block:
+    get:
+      description: Returns a redirect to the canonical first block URL for the selected deployment. Clients that automatically follow redirects will receive the full block document instead.
+      operationId: get_first_block
+      parameters:
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Full block document as served by neardata, including `block` and `shards`.
+                nullable: true
+                type: object
+          description: Full block document returned after automatic redirect following
+        '302':
+          description: Redirect to the canonical first block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+      summary: Redirect to the first block after genesis
+      tags:
+      - blocks
+      x-fastnear-slug: first_block
+      x-fastnear-title: NEAR Data API - First Block
+  /v0/last_block/final:
+    get:
+      description: Returns a redirect to the canonical latest finalized block URL for the current deployment. Clients that automatically follow redirects will receive the full block document instead.
+      operationId: get_last_block_final
+      parameters:
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Full block document as served by neardata, including `block` and `shards`.
+                nullable: true
+                type: object
+          description: Full block document returned after automatic redirect following
+        '302':
+          description: Redirect to the latest block block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Redirect to the latest finalized block
+      tags:
+      - blocks
+      x-fastnear-slug: last_block_final
+      x-fastnear-title: NEAR Data API - Last Final Block
+  /v0/last_block/optimistic:
+    get:
+      description: Returns a redirect to the canonical latest optimistic block URL for the current deployment. Clients that automatically follow redirects will receive the resulting block document instead.
+      operationId: get_last_block_optimistic
+      parameters:
+      - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
+        in: query
+        name: apiKey
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                description: Full block document as served by neardata, including `block` and `shards`.
+                nullable: true
+                type: object
+          description: Full block document returned after automatic redirect following
+        '302':
+          description: Redirect to the latest block block URL
+          headers:
+            Location:
+              schema:
+                type: string
+        '401':
+          content:
+            text/plain:
+              example: Unauthorized
+              schema:
+                type: string
+          description: Invalid or unauthorized API key
+        '500':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: Cache or internal data error
+      summary: Redirect to the latest optimistic block
+      tags:
+      - blocks
+      x-fastnear-slug: last_block_optimistic
+      x-fastnear-title: NEAR Data API - Last Optimistic Block
+servers:
+- description: Mainnet
+  url: https://mainnet.neardata.xyz
+- description: Testnet
+  url: https://testnet.neardata.xyz
