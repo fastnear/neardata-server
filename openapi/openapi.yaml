@@ -33,7 +33,7 @@ openapi: 3.0.3
 paths:
   /health:
     get:
-      description: Returns `ok` when the current deployment is healthy and `unhealthy` when the latest indexed block is too stale. Invalid API keys can be rejected upstream before the request reaches the app.
+      description: Check whether the neardata service is healthy for the current deployment.
       operationId: get_health
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -71,7 +71,7 @@ paths:
       x-fastnear-title: NEAR Data API - Health
   /v0/block/{block_height}:
     get:
-      description: Returns the finalized block document for the requested height, or `null` when the block does not exist within the requested archive segment. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      description: Fetch the finalized block document for a given height, including all chunks and shard data.
       operationId: get_block
       parameters:
       - description: NEAR block height to retrieve.
@@ -132,7 +132,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block
   /v0/block/{block_height}/chunk/{shard_id}:
     get:
-      description: Returns the chunk object for the requested shard ID, or `null` when that chunk is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      description: Fetch a single chunk for a given finalized block and shard ID.
       operationId: get_chunk
       parameters:
       - description: NEAR block height to retrieve.
@@ -200,7 +200,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Chunk
   /v0/block/{block_height}/headers:
     get:
-      description: Returns the `block` object extracted from the full block response, not just the nested `header` sub-object. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      description: Fetch the top-level block object for a finalized block, including the block header and chunk summaries.
       operationId: get_block_headers
       parameters:
       - description: NEAR block height to retrieve.
@@ -261,7 +261,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Headers
   /v0/block/{block_height}/shard/{shard_id}:
     get:
-      description: Returns the shard object for the requested shard ID, or `null` when that shard is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.
+      description: Fetch a single shard document for a given finalized block and shard ID.
       operationId: get_shard
       parameters:
       - description: NEAR block height to retrieve.
@@ -329,7 +329,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Shard
   /v0/block_opt/{block_height}:
     get:
-      description: Returns an optimistic block document when the deployment can serve it directly. Older or archive-only heights may redirect to a canonical finalized or archive URL instead.
+      description: Fetch an optimistic block document when the endpoint can serve it directly, or follow the documented redirect behavior when the deployment hands off to finalized or archive infrastructure.
       operationId: get_block_optimistic
       parameters:
       - description: NEAR block height to retrieve.
@@ -390,7 +390,7 @@ paths:
       x-fastnear-title: NEAR Data API - Optimistic Block
   /v0/first_block:
     get:
-      description: Returns a redirect to the canonical first block URL for the selected deployment. Clients that automatically follow redirects will receive the full block document instead.
+      description: This endpoint redirects to the canonical first block URL for the selected network.
       operationId: get_first_block
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -429,7 +429,7 @@ paths:
       x-fastnear-title: NEAR Data API - First Block
   /v0/last_block/final:
     get:
-      description: Returns a redirect to the canonical latest finalized block URL for the current deployment. Clients that automatically follow redirects will receive the full block document instead.
+      description: This endpoint redirects to the latest finalized block URL for the active deployment.
       operationId: get_last_block_final
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -474,7 +474,7 @@ paths:
       x-fastnear-title: NEAR Data API - Last Final Block
   /v0/last_block/optimistic:
     get:
-      description: Returns a redirect to the canonical latest optimistic block URL for the current deployment. Clients that automatically follow redirects will receive the resulting block document instead.
+      description: This endpoint redirects to the latest optimistic block URL for the active deployment.
       operationId: get_last_block_optimistic
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.

@@ -45,7 +45,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block",
                     "get_block",
                     "Fetch a finalized block by height",
-                    "Returns the finalized block document for the requested height, or `null` when the block does not exist within the requested archive segment. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.",
+                    "Fetch the finalized block document for a given height, including all chunks and shard data.",
                     block_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -57,7 +57,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Headers",
                     "get_block_headers",
                     "Fetch the block-level object for a finalized block",
-                    "Returns the `block` object extracted from the full block response, not just the nested `header` sub-object. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.",
+                    "Fetch the top-level block object for a finalized block, including the block header and chunk summaries.",
                     headers_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -69,7 +69,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Chunk",
                     "get_chunk",
                     "Fetch one chunk from a finalized block",
-                    "Returns the chunk object for the requested shard ID, or `null` when that chunk is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.",
+                    "Fetch a single chunk for a given finalized block and shard ID.",
                     chunk_document_schema(),
                     vec![block_height_parameter(), shard_id_parameter("Shard ID whose chunk should be returned.")],
                     block_error.clone()
@@ -81,7 +81,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Shard",
                     "get_shard",
                     "Fetch one shard from a finalized block",
-                    "Returns the shard object for the requested shard ID, or `null` when that shard is absent. Depending on deployment topology, the request may redirect to another host that owns the canonical archive range.",
+                    "Fetch a single shard document for a given finalized block and shard ID.",
                     shard_document_schema(),
                     vec![block_height_parameter(), shard_id_parameter("Shard ID to return.")],
                     block_error.clone()
@@ -93,7 +93,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Optimistic Block",
                     "get_block_optimistic",
                     "Fetch an optimistic block by height",
-                    "Returns an optimistic block document when the deployment can serve it directly. Older or archive-only heights may redirect to a canonical finalized or archive URL instead.",
+                    "Fetch an optimistic block document when the endpoint can serve it directly, or follow the documented redirect behavior when the deployment hands off to finalized or archive infrastructure.",
                     block_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -105,7 +105,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Last Final Block",
                     "get_last_block_final",
                     "Redirect to the latest finalized block",
-                    "Returns a redirect to the canonical latest finalized block URL for the current deployment. Clients that automatically follow redirects will receive the full block document instead."
+                    "This endpoint redirects to the latest finalized block URL for the active deployment."
                 )
             },
             "/v0/last_block/optimistic": {
@@ -114,7 +114,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Last Optimistic Block",
                     "get_last_block_optimistic",
                     "Redirect to the latest optimistic block",
-                    "Returns a redirect to the canonical latest optimistic block URL for the current deployment. Clients that automatically follow redirects will receive the resulting block document instead."
+                    "This endpoint redirects to the latest optimistic block URL for the active deployment."
                 )
             }
         },
@@ -131,7 +131,7 @@ fn health_operation(health_schema: Value) -> Value {
     json!({
         "operationId": "get_health",
         "summary": "Get service health",
-        "description": "Returns `ok` when the current deployment is healthy and `unhealthy` when the latest indexed block is too stale. Invalid API keys can be rejected upstream before the request reaches the app.",
+        "description": "Check whether the neardata service is healthy for the current deployment.",
         "tags": ["system"],
         "x-fastnear-slug": "health",
         "x-fastnear-title": "NEAR Data API - Health",
@@ -152,7 +152,7 @@ fn first_block_operation() -> Value {
     json!({
         "operationId": "get_first_block",
         "summary": "Redirect to the first block after genesis",
-        "description": "Returns a redirect to the canonical first block URL for the selected deployment. Clients that automatically follow redirects will receive the full block document instead.",
+        "description": "This endpoint redirects to the canonical first block URL for the selected network.",
         "tags": ["blocks"],
         "x-fastnear-slug": "first_block",
         "x-fastnear-title": "NEAR Data API - First Block",
