@@ -340,7 +340,7 @@ fn block_height_parameter() -> Value {
         "schema": {
             "type": "string"
         },
-        "example": "9820210"
+        "example": "50000000"
     })
 }
 

@@ -75,7 +75,7 @@ paths:
       operationId: get_block
       parameters:
       - description: NEAR block height to retrieve.
-        example: '9820210'
+        example: '50000000'
         in: path
         name: block_height
         required: true
@@ -136,7 +136,7 @@ paths:
       operationId: get_chunk
       parameters:
       - description: NEAR block height to retrieve.
-        example: '9820210'
+        example: '50000000'
         in: path
         name: block_height
         required: true
@@ -204,7 +204,7 @@ paths:
       operationId: get_block_headers
       parameters:
       - description: NEAR block height to retrieve.
-        example: '9820210'
+        example: '50000000'
         in: path
         name: block_height
         required: true
@@ -265,7 +265,7 @@ paths:
       operationId: get_shard
       parameters:
       - description: NEAR block height to retrieve.
-        example: '9820210'
+        example: '50000000'
         in: path
         name: block_height
         required: true
@@ -333,7 +333,7 @@ paths:
       operationId: get_block_optimistic
       parameters:
       - description: NEAR block height to retrieve.
-        example: '9820210'
+        example: '50000000'
         in: path
         name: block_height
         required: true
