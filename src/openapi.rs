@@ -45,7 +45,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block",
                     "get_block",
                     "Fetch a finalized block by height",
-                    "Fetch the finalized block document for a given height, including all chunks and shard data.",
+                    "Fetch a finalized block's full document at a chosen height — header plus every chunk and shard payload.",
                     block_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -57,7 +57,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Headers",
                     "get_block_headers",
                     "Fetch the block-level object for a finalized block",
-                    "Fetch the top-level block object for a finalized block, including the block header and chunk summaries.",
+                    "Fetch only a finalized block's header and chunk summaries — no per-shard payload.",
                     headers_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -69,7 +69,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Chunk",
                     "get_chunk",
                     "Fetch one chunk from a finalized block",
-                    "Fetch a single chunk for a given finalized block and shard ID.",
+                    "Fetch one chunk — a single shard's transactions and incoming receipts — at a chosen block height.",
                     chunk_document_schema(),
                     vec![block_height_parameter(), shard_id_parameter("Shard ID whose chunk should be returned.")],
                     block_error.clone()
@@ -81,7 +81,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Block Shard",
                     "get_shard",
                     "Fetch one shard from a finalized block",
-                    "Fetch a single shard document for a given finalized block and shard ID.",
+                    "Fetch one shard's full payload at a chosen block — chunk plus state changes and produced receipts.",
                     shard_document_schema(),
                     vec![block_height_parameter(), shard_id_parameter("Shard ID to return.")],
                     block_error.clone()
@@ -93,7 +93,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Optimistic Block",
                     "get_block_optimistic",
                     "Fetch an optimistic block by height",
-                    "Fetch an optimistic block document when the endpoint can serve it directly, or follow the documented redirect behavior when the deployment hands off to finalized or archive infrastructure.",
+                    "Fetch an optimistic (not-yet-final) block at a chosen height — may redirect once the optimistic window has finalized.",
                     block_document_schema(),
                     vec![block_height_parameter()],
                     block_error.clone()
@@ -105,7 +105,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Last Final Block",
                     "get_last_block_final",
                     "Redirect to the latest finalized block",
-                    "This endpoint redirects to the latest finalized block URL for the active deployment."
+                    "Redirect to the most recent finalized block — the chain-tip cursor once consensus has settled."
                 )
             },
             "/v0/last_block/optimistic": {
@@ -114,7 +114,7 @@ pub fn generate(check: bool) -> Result<()> {
                     "NEAR Data API - Last Optimistic Block",
                     "get_last_block_optimistic",
                     "Redirect to the latest optimistic block",
-                    "This endpoint redirects to the latest optimistic block URL for the active deployment."
+                    "Redirect to the most recent optimistic block — the freshest-possible tip, ahead of final settlement."
                 )
             }
         },
@@ -131,7 +131,7 @@ fn health_operation(health_schema: Value) -> Value {
     json!({
         "operationId": "get_health",
         "summary": "Get service health",
-        "description": "Check whether the neardata service is healthy for the current deployment.",
+        "description": "Ping the neardata service for liveness — returns `{status: ok}` when healthy, errors otherwise.",
         "tags": ["system"],
         "x-fastnear-slug": "health",
         "x-fastnear-title": "NEAR Data API - Health",
@@ -152,7 +152,7 @@ fn first_block_operation() -> Value {
     json!({
         "operationId": "get_first_block",
         "summary": "Redirect to the first block after genesis",
-        "description": "This endpoint redirects to the canonical first block URL for the selected network.",
+        "description": "Redirect to the chain's first post-genesis block — a starting cursor for indexers backfilling from the beginning.",
         "tags": ["blocks"],
         "x-fastnear-slug": "first_block",
         "x-fastnear-title": "NEAR Data API - First Block",

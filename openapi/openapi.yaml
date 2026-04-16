@@ -33,7 +33,7 @@ openapi: 3.0.3
 paths:
   /health:
     get:
-      description: Check whether the neardata service is healthy for the current deployment.
+      description: 'Ping the neardata service for liveness — returns `{status: ok}` when healthy, errors otherwise.'
       operationId: get_health
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -71,7 +71,7 @@ paths:
       x-fastnear-title: NEAR Data API - Health
   /v0/block/{block_height}:
     get:
-      description: Fetch the finalized block document for a given height, including all chunks and shard data.
+      description: Fetch a finalized block's full document at a chosen height — header plus every chunk and shard payload.
       operationId: get_block
       parameters:
       - description: NEAR block height to retrieve.
@@ -132,7 +132,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block
   /v0/block/{block_height}/chunk/{shard_id}:
     get:
-      description: Fetch a single chunk for a given finalized block and shard ID.
+      description: Fetch one chunk — a single shard's transactions and incoming receipts — at a chosen block height.
       operationId: get_chunk
       parameters:
       - description: NEAR block height to retrieve.
@@ -200,7 +200,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Chunk
   /v0/block/{block_height}/headers:
     get:
-      description: Fetch the top-level block object for a finalized block, including the block header and chunk summaries.
+      description: Fetch only a finalized block's header and chunk summaries — no per-shard payload.
       operationId: get_block_headers
       parameters:
       - description: NEAR block height to retrieve.
@@ -261,7 +261,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Headers
   /v0/block/{block_height}/shard/{shard_id}:
     get:
-      description: Fetch a single shard document for a given finalized block and shard ID.
+      description: Fetch one shard's full payload at a chosen block — chunk plus state changes and produced receipts.
       operationId: get_shard
       parameters:
       - description: NEAR block height to retrieve.
@@ -329,7 +329,7 @@ paths:
       x-fastnear-title: NEAR Data API - Block Shard
   /v0/block_opt/{block_height}:
     get:
-      description: Fetch an optimistic block document when the endpoint can serve it directly, or follow the documented redirect behavior when the deployment hands off to finalized or archive infrastructure.
+      description: Fetch an optimistic (not-yet-final) block at a chosen height — may redirect once the optimistic window has finalized.
       operationId: get_block_optimistic
       parameters:
       - description: NEAR block height to retrieve.
@@ -390,7 +390,7 @@ paths:
       x-fastnear-title: NEAR Data API - Optimistic Block
   /v0/first_block:
     get:
-      description: This endpoint redirects to the canonical first block URL for the selected network.
+      description: Redirect to the chain's first post-genesis block — a starting cursor for indexers backfilling from the beginning.
       operationId: get_first_block
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -429,7 +429,7 @@ paths:
       x-fastnear-title: NEAR Data API - First Block
   /v0/last_block/final:
     get:
-      description: This endpoint redirects to the latest finalized block URL for the active deployment.
+      description: Redirect to the most recent finalized block — the chain-tip cursor once consensus has settled.
       operationId: get_last_block_final
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
@@ -474,7 +474,7 @@ paths:
       x-fastnear-title: NEAR Data API - Last Final Block
   /v0/last_block/optimistic:
     get:
-      description: This endpoint redirects to the latest optimistic block URL for the active deployment.
+      description: Redirect to the most recent optimistic block — the freshest-possible tip, ahead of final settlement.
       operationId: get_last_block_optimistic
       parameters:
       - description: Optional FastNEAR subscription API key. Invalid values may return `401` before redirect handling.
