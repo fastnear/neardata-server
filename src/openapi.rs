@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use fastnear_openapi_generator::{write_or_check_yaml, SchemaRegistry};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::types::{BlockErrorResponse, HealthResponse};
 
@@ -13,7 +13,12 @@ pub fn generate(check: bool) -> Result<()> {
     let mut registry = SchemaRegistry::openapi3();
     let health = registry.schema_ref::<HealthResponse>();
     let block_error = registry.schema_ref::<BlockErrorResponse>();
-    let components = registry.into_components();
+    let mut components = registry.into_components();
+    insert_generated_schemas(
+        components
+            .as_object_mut()
+            .expect("schema registry should serialize as a JSON object"),
+    );
 
     let doc = json!({
         "openapi": API_VERSION,
@@ -291,31 +296,663 @@ fn redirect_response(description: &str) -> Value {
 }
 
 fn block_document_schema() -> Value {
-    raw_json_object_or_null(
-        "Full block document as served by neardata, including `block` and `shards`.",
-    )
+    component_ref_or_null("BlockDocument")
 }
 
 fn headers_document_schema() -> Value {
-    raw_json_object_or_null(
-        "Block-level object returned by `/headers`, corresponding to the full response's `block` field.",
-    )
+    component_ref_or_null("BlockEnvelope")
 }
 
 fn shard_document_schema() -> Value {
-    raw_json_object_or_null("Shard object for the requested shard ID.")
+    component_ref_or_null("ShardDocument")
 }
 
 fn chunk_document_schema() -> Value {
-    raw_json_object_or_null("Chunk object for the requested shard ID.")
+    component_ref_or_null("ChunkDocument")
 }
 
-fn raw_json_object_or_null(description: &str) -> Value {
+fn component_ref(name: &str) -> Value {
+    json!({
+        "$ref": format!("#/components/schemas/{name}")
+    })
+}
+
+fn component_ref_or_null(name: &str) -> Value {
+    json!({
+        "nullable": true,
+        "$ref": format!("#/components/schemas/{name}")
+    })
+}
+
+fn insert_generated_schemas(components: &mut Map<String, Value>) {
+    for (name, schema) in [
+        ("BlockDocument", block_document_component()),
+        ("BlockEnvelope", block_envelope_component()),
+        ("BlockHeader", block_header_component()),
+        ("ChunkDocument", chunk_document_component()),
+        ("ChunkHeader", chunk_header_component()),
+        ("ChunkTransactionWrapper", chunk_transaction_wrapper_component()),
+        ("ActionDocument", action_document_component()),
+        ("ActionReceiptBody", action_receipt_body_component()),
+        ("ActionReceiptDocument", action_receipt_document_component()),
+        ("DataReceiptBody", data_receipt_body_component()),
+        ("DataReceiptDocument", data_receipt_document_component()),
+        ("ExecutionWithReceipt", execution_with_receipt_component()),
+        ("ExecutionOutcomeDocument", execution_outcome_document_component()),
+        ("ExecutionOutcomeStatus", execution_outcome_status_component()),
+        (
+            "ExecutionOutcomeStatusFailure",
+            execution_outcome_status_failure_component(),
+        ),
+        (
+            "ExecutionOutcomeStatusSuccessReceiptId",
+            execution_outcome_status_success_receipt_id_component(),
+        ),
+        (
+            "ExecutionOutcomeStatusSuccessValue",
+            execution_outcome_status_success_value_component(),
+        ),
+        ("ExecutionOutcomeSummary", execution_outcome_summary_component()),
+        ("ExecutionProofItem", execution_proof_item_component()),
+        ("OmittedReceiptDocument", omitted_receipt_document_component()),
+        (
+            "OutputDataReceiverDocument",
+            output_data_receiver_document_component(),
+        ),
+        ("ReceiptBody", receipt_body_component()),
+        ("ReceiptDocument", receipt_document_component()),
+        ("ShardDocument", shard_document_component()),
+        ("StateChangeItem", state_change_item_component()),
+        ("SignedTransactionDocument", signed_transaction_document_component()),
+        ("StateChangeCause", state_change_cause_component()),
+        (
+            "StateChangeCauseActionReceiptGasReward",
+            state_change_cause_action_receipt_gas_reward_component(),
+        ),
+        (
+            "StateChangeCauseReceiptProcessing",
+            state_change_cause_receipt_processing_component(),
+        ),
+        (
+            "StateChangeCauseTransactionProcessing",
+            state_change_cause_transaction_processing_component(),
+        ),
+        ("StateChangeValue", state_change_value_component()),
+        (
+            "StateChangeValueAccessKeyUpdate",
+            state_change_value_access_key_update_component(),
+        ),
+        (
+            "StateChangeValueAccountUpdate",
+            state_change_value_account_update_component(),
+        ),
+        (
+            "StateChangeValueDataDeletion",
+            state_change_value_data_deletion_component(),
+        ),
+        (
+            "StateChangeValueDataUpdate",
+            state_change_value_data_update_component(),
+        ),
+    ] {
+        components.insert(name.to_string(), schema);
+    }
+}
+
+fn block_document_component() -> Value {
     json!({
         "type": "object",
-        "nullable": true,
+        "additionalProperties": false,
+        "description": "Full block document as served by neardata, including the block envelope and per-shard payloads.",
+        "properties": {
+            "block": component_ref("BlockEnvelope"),
+            "shards": {
+                "type": "array",
+                "items": component_ref("ShardDocument")
+            }
+        },
+        "required": ["block", "shards"]
+    })
+}
+
+fn block_envelope_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Block-level payload returned by neardata.",
+        "properties": {
+            "author": {
+                "type": "string",
+                "description": "Block producer account ID."
+            },
+            "chunks": {
+                "type": "array",
+                "items": component_ref("ChunkHeader")
+            },
+            "header": component_ref("BlockHeader")
+        },
+        "required": ["author", "chunks", "header"]
+    })
+}
+
+fn block_header_component() -> Value {
+    json!({
+        "type": "object",
         "additionalProperties": true,
-        "description": description
+        "description": "Block header object as served by neardata.",
+        "properties": {
+            "chunks_included": { "type": "integer", "format": "uint64" },
+            "epoch_id": { "type": "string" },
+            "gas_price": { "type": "string" },
+            "hash": { "type": "string" },
+            "height": { "type": "integer", "format": "uint64" },
+            "next_epoch_id": { "type": "string" },
+            "prev_hash": { "type": "string" },
+            "prev_height": { "type": "integer", "format": "uint64" },
+            "timestamp": { "type": "integer" },
+            "timestamp_nanosec": { "type": "string" },
+            "total_supply": { "type": "string" }
+        }
+    })
+}
+
+fn chunk_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Chunk payload returned by neardata for a single shard in a selected block.",
+        "properties": {
+            "author": {
+                "type": "string",
+                "description": "Chunk producer account ID."
+            },
+            "header": component_ref("ChunkHeader"),
+            "receipts": {
+                "type": "array",
+                "items": component_ref("ReceiptDocument")
+            },
+            "transactions": {
+                "type": "array",
+                "items": component_ref("ChunkTransactionWrapper")
+            }
+        },
+        "required": ["author", "header", "receipts", "transactions"]
+    })
+}
+
+fn chunk_header_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Chunk header object as served by neardata.",
+        "properties": {
+            "chunk_hash": { "type": "string" },
+            "gas_limit": { "type": "integer" },
+            "gas_used": { "type": "integer" },
+            "height_created": { "type": "integer", "format": "uint64" },
+            "height_included": { "type": "integer", "format": "uint64" },
+            "outcome_root": { "type": "string" },
+            "outgoing_receipts_root": { "type": "string" },
+            "prev_block_hash": { "type": "string" },
+            "shard_id": { "type": "integer", "format": "uint64" },
+            "tx_root": { "type": "string" }
+        }
+    })
+}
+
+fn chunk_transaction_wrapper_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Transaction entry returned inside a neardata chunk.",
+        "properties": {
+            "outcome": component_ref("ExecutionWithReceipt"),
+            "transaction": component_ref("SignedTransactionDocument")
+        },
+        "required": ["outcome", "transaction"]
+    })
+}
+
+fn action_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": true
+    })
+}
+
+fn action_receipt_body_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "Action": component_ref("ActionReceiptDocument")
+        },
+        "required": ["Action"]
+    })
+}
+
+fn action_receipt_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "actions": {
+                "type": "array",
+                "items": component_ref("ActionDocument")
+            },
+            "gas_price": { "type": "string" },
+            "input_data_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "is_promise_yield": { "type": "boolean" },
+            "output_data_receivers": {
+                "type": "array",
+                "items": component_ref("OutputDataReceiverDocument")
+            },
+            "signer_id": { "type": "string" },
+            "signer_public_key": { "type": "string" }
+        },
+        "required": [
+            "actions",
+            "gas_price",
+            "input_data_ids",
+            "is_promise_yield",
+            "output_data_receivers",
+            "signer_id",
+            "signer_public_key"
+        ]
+    })
+}
+
+fn data_receipt_body_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "Data": component_ref("DataReceiptDocument")
+        },
+        "required": ["Data"]
+    })
+}
+
+fn data_receipt_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "data": { "type": "string" },
+            "data_id": { "type": "string" },
+            "is_promise_resume": { "type": "boolean" }
+        },
+        "required": ["data", "data_id", "is_promise_resume"]
+    })
+}
+
+fn execution_with_receipt_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Execution result paired with an optional receipt object.",
+        "properties": {
+            "execution_outcome": component_ref("ExecutionOutcomeDocument"),
+            "receipt": {
+                "type": "object",
+                "nullable": true,
+                "description": "Receipt payload when neardata includes it for this entry.",
+                "oneOf": [
+                    component_ref("ReceiptDocument"),
+                    component_ref("OmittedReceiptDocument")
+                ]
+            },
+            "tx_hash": { "type": "string" }
+        },
+        "required": ["execution_outcome", "receipt"]
+    })
+}
+
+fn execution_outcome_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "block_hash": { "type": "string" },
+            "id": { "type": "string" },
+            "outcome": component_ref("ExecutionOutcomeSummary"),
+            "proof": {
+                "type": "array",
+                "items": component_ref("ExecutionProofItem")
+            }
+        },
+        "required": ["block_hash", "id", "outcome", "proof"]
+    })
+}
+
+fn execution_outcome_status_component() -> Value {
+    json!({
+        "oneOf": [
+            component_ref("ExecutionOutcomeStatusSuccessReceiptId"),
+            component_ref("ExecutionOutcomeStatusSuccessValue"),
+            component_ref("ExecutionOutcomeStatusFailure")
+        ]
+    })
+}
+
+fn execution_outcome_status_failure_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "Failure": {
+                "type": "object",
+                "additionalProperties": true
+            }
+        },
+        "required": ["Failure"]
+    })
+}
+
+fn execution_outcome_status_success_receipt_id_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "SuccessReceiptId": { "type": "string" }
+        },
+        "required": ["SuccessReceiptId"]
+    })
+}
+
+fn execution_outcome_status_success_value_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "SuccessValue": { "type": "string" }
+        },
+        "required": ["SuccessValue"]
+    })
+}
+
+fn execution_outcome_summary_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "executor_id": { "type": "string" },
+            "gas_burnt": { "type": "integer", "format": "uint64" },
+            "logs": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "metadata": {
+                "type": "object",
+                "additionalProperties": true
+            },
+            "receipt_ids": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "status": component_ref("ExecutionOutcomeStatus"),
+            "tokens_burnt": { "type": "string" }
+        },
+        "required": [
+            "executor_id",
+            "gas_burnt",
+            "logs",
+            "metadata",
+            "receipt_ids",
+            "status",
+            "tokens_burnt"
+        ]
+    })
+}
+
+fn execution_proof_item_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": true
+    })
+}
+
+fn omitted_receipt_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false
+    })
+}
+
+fn output_data_receiver_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "data_id": { "type": "string" },
+            "receiver_id": { "type": "string" }
+        },
+        "required": ["data_id", "receiver_id"]
+    })
+}
+
+fn receipt_body_component() -> Value {
+    json!({
+        "oneOf": [
+            component_ref("ActionReceiptBody"),
+            component_ref("DataReceiptBody")
+        ]
+    })
+}
+
+fn receipt_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Receipt object as served by neardata inside a chunk payload.",
+        "properties": {
+            "predecessor_id": { "type": "string" },
+            "priority": { "type": "integer", "format": "uint64" },
+            "receipt": component_ref("ReceiptBody"),
+            "receipt_id": { "type": "string" },
+            "receiver_id": { "type": "string" }
+        },
+        "required": [
+            "predecessor_id",
+            "priority",
+            "receipt",
+            "receipt_id",
+            "receiver_id"
+        ]
+    })
+}
+
+fn shard_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Per-shard payload returned by neardata for a block.",
+        "properties": {
+            "chunk": component_ref("ChunkDocument"),
+            "receipt_execution_outcomes": {
+                "type": "array",
+                "items": component_ref("ExecutionWithReceipt")
+            },
+            "shard_id": { "type": "integer", "format": "uint64" },
+            "state_changes": {
+                "type": "array",
+                "items": component_ref("StateChangeItem")
+            }
+        },
+        "required": [
+            "chunk",
+            "receipt_execution_outcomes",
+            "shard_id",
+            "state_changes"
+        ]
+    })
+}
+
+fn state_change_item_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "State change entry returned by neardata for a shard.",
+        "properties": {
+            "cause": component_ref("StateChangeCause"),
+            "change": component_ref("StateChangeValue"),
+            "type": { "type": "string" }
+        },
+        "required": ["cause", "change", "type"]
+    })
+}
+
+fn signed_transaction_document_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "actions": {
+                "type": "array",
+                "items": component_ref("ActionDocument")
+            },
+            "hash": { "type": "string" },
+            "nonce": { "type": "integer", "format": "uint64" },
+            "priority_fee": { "type": "integer", "format": "uint64" },
+            "public_key": { "type": "string" },
+            "receiver_id": { "type": "string" },
+            "signature": { "type": "string" },
+            "signer_id": { "type": "string" }
+        },
+        "required": [
+            "actions",
+            "hash",
+            "nonce",
+            "priority_fee",
+            "public_key",
+            "receiver_id",
+            "signature",
+            "signer_id"
+        ]
+    })
+}
+
+fn state_change_cause_component() -> Value {
+    json!({
+        "oneOf": [
+            component_ref("StateChangeCauseTransactionProcessing"),
+            component_ref("StateChangeCauseReceiptProcessing"),
+            component_ref("StateChangeCauseActionReceiptGasReward")
+        ]
+    })
+}
+
+fn state_change_cause_action_receipt_gas_reward_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "receipt_hash": { "type": "string" },
+            "type": { "type": "string" }
+        },
+        "required": ["receipt_hash", "type"]
+    })
+}
+
+fn state_change_cause_receipt_processing_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "receipt_hash": { "type": "string" },
+            "type": { "type": "string" }
+        },
+        "required": ["receipt_hash", "type"]
+    })
+}
+
+fn state_change_cause_transaction_processing_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tx_hash": { "type": "string" },
+            "type": { "type": "string" }
+        },
+        "required": ["tx_hash", "type"]
+    })
+}
+
+fn state_change_value_component() -> Value {
+    json!({
+        "oneOf": [
+            component_ref("StateChangeValueAccountUpdate"),
+            component_ref("StateChangeValueAccessKeyUpdate"),
+            component_ref("StateChangeValueDataUpdate"),
+            component_ref("StateChangeValueDataDeletion")
+        ]
+    })
+}
+
+fn state_change_value_access_key_update_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "access_key": {
+                "type": "object",
+                "additionalProperties": true
+            },
+            "account_id": { "type": "string" },
+            "public_key": { "type": "string" }
+        },
+        "required": ["access_key", "account_id", "public_key"]
+    })
+}
+
+fn state_change_value_account_update_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "account_id": { "type": "string" },
+            "amount": { "type": "string" },
+            "code_hash": { "type": "string" },
+            "locked": { "type": "string" },
+            "storage_paid_at": { "type": "integer", "format": "uint64" },
+            "storage_usage": { "type": "integer", "format": "uint64" }
+        },
+        "required": [
+            "account_id",
+            "amount",
+            "code_hash",
+            "locked",
+            "storage_paid_at",
+            "storage_usage"
+        ]
+    })
+}
+
+fn state_change_value_data_deletion_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "account_id": { "type": "string" },
+            "key_base64": { "type": "string" }
+        },
+        "required": ["account_id", "key_base64"]
+    })
+}
+
+fn state_change_value_data_update_component() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "account_id": { "type": "string" },
+            "key_base64": { "type": "string" },
+            "value_base64": { "type": "string" }
+        },
+        "required": ["account_id", "key_base64", "value_base64"]
     })
 }
 
@@ -363,22 +1000,23 @@ mod tests {
 
     use super::{
         block_document_schema, block_height_parameter, block_operation, headers_document_schema,
-        raw_json_object_or_null,
     };
 
     #[test]
-    fn raw_json_schemas_stay_nullable_objects() {
-        let schema = raw_json_object_or_null("Example");
+    fn component_refs_stay_nullable() {
+        let schema = block_document_schema();
 
-        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["$ref"], "#/components/schemas/BlockDocument");
         assert_eq!(schema["nullable"], true);
-        assert_eq!(schema["additionalProperties"], true);
     }
 
     #[test]
-    fn block_schema_fragments_preserve_object_or_null_shape() {
+    fn block_schema_fragments_preserve_component_refs() {
         assert_eq!(block_document_schema()["nullable"], true);
-        assert_eq!(headers_document_schema()["type"], "object");
+        assert_eq!(
+            headers_document_schema()["$ref"],
+            "#/components/schemas/BlockEnvelope"
+        );
     }
 
     #[test]
