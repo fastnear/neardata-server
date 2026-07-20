@@ -331,15 +331,24 @@ fn insert_generated_schemas(components: &mut Map<String, Value>) {
         ("BlockHeader", block_header_component()),
         ("ChunkDocument", chunk_document_component()),
         ("ChunkHeader", chunk_header_component()),
-        ("ChunkTransactionWrapper", chunk_transaction_wrapper_component()),
+        (
+            "ChunkTransactionWrapper",
+            chunk_transaction_wrapper_component(),
+        ),
         ("ActionDocument", action_document_component()),
         ("ActionReceiptBody", action_receipt_body_component()),
         ("ActionReceiptDocument", action_receipt_document_component()),
         ("DataReceiptBody", data_receipt_body_component()),
         ("DataReceiptDocument", data_receipt_document_component()),
         ("ExecutionWithReceipt", execution_with_receipt_component()),
-        ("ExecutionOutcomeDocument", execution_outcome_document_component()),
-        ("ExecutionOutcomeStatus", execution_outcome_status_component()),
+        (
+            "ExecutionOutcomeDocument",
+            execution_outcome_document_component(),
+        ),
+        (
+            "ExecutionOutcomeStatus",
+            execution_outcome_status_component(),
+        ),
         (
             "ExecutionOutcomeStatusFailure",
             execution_outcome_status_failure_component(),
@@ -352,9 +361,15 @@ fn insert_generated_schemas(components: &mut Map<String, Value>) {
             "ExecutionOutcomeStatusSuccessValue",
             execution_outcome_status_success_value_component(),
         ),
-        ("ExecutionOutcomeSummary", execution_outcome_summary_component()),
+        (
+            "ExecutionOutcomeSummary",
+            execution_outcome_summary_component(),
+        ),
         ("ExecutionProofItem", execution_proof_item_component()),
-        ("OmittedReceiptDocument", omitted_receipt_document_component()),
+        (
+            "OmittedReceiptDocument",
+            omitted_receipt_document_component(),
+        ),
         (
             "OutputDataReceiverDocument",
             output_data_receiver_document_component(),
@@ -363,7 +378,10 @@ fn insert_generated_schemas(components: &mut Map<String, Value>) {
         ("ReceiptDocument", receipt_document_component()),
         ("ShardDocument", shard_document_component()),
         ("StateChangeItem", state_change_item_component()),
-        ("SignedTransactionDocument", signed_transaction_document_component()),
+        (
+            "SignedTransactionDocument",
+            signed_transaction_document_component(),
+        ),
         ("StateChangeCause", state_change_cause_component()),
         (
             "StateChangeCauseActionReceiptGasReward",

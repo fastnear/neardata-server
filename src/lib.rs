@@ -5,7 +5,7 @@ pub mod openapi;
 pub mod reader;
 pub mod types;
 
-use actix_web::{web, HttpResponse, Responder, Scope};
+use actix_web::{HttpResponse, Responder};
 
 use crate::types::{BlockHeight, ChainId};
 
@@ -39,30 +39,20 @@ pub struct AppState {
     /// Whether this node has the latest blocks and uses archive files.
     /// If not, it means this is an archive node.
     pub is_latest: bool,
-    /// Whether this node has the freshest blocks, but doesn't use archive files.
+    /// Whether this node has the freshest blocks, but doesn't use archive files
     pub is_fresh: bool,
     pub archive_config: Option<ArchiveConfig>,
     pub max_healthy_latency_ms: u128,
 }
 
-pub async fn serve_index() -> impl Responder {
+pub async fn greet() -> impl Responder {
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(INDEX_HTML)
 }
 
-pub async fn serve_skill() -> impl Responder {
+pub async fn skill() -> impl Responder {
     HttpResponse::Ok()
         .content_type("text/markdown; charset=utf-8")
         .body(SKILL_MD)
-}
-
-pub fn api_v0_scope() -> Scope {
-    web::scope("/v0")
-        .service(api::v0::get_first_block)
-        .service(api::v0::get_block)
-        .service(api::v0::get_last_block)
-        .service(api::v0::get_block_headers)
-        .service(api::v0::get_shard)
-        .service(api::v0::get_chunk)
 }

@@ -6,9 +6,7 @@ use actix_web::http::header;
 use actix_web::{middleware, web, App, HttpServer};
 use neardata_server::api;
 use neardata_server::types::{BlockHeight, ChainId};
-use neardata_server::{
-    api_v0_scope, serve_index, serve_skill, AppState, ArchiveConfig, ReadConfig,
-};
+use neardata_server::{greet, skill, AppState, ArchiveConfig, ReadConfig};
 use tracing_subscriber::EnvFilter;
 
 #[actix_web::main]
@@ -83,6 +81,13 @@ async fn main() -> std::io::Result<()> {
             .max_age(3600)
             .supports_credentials();
 
+        let api_v0 = web::scope("/v0")
+            .service(api::v0::get_first_block)
+            .service(api::v0::get_block)
+            .service(api::v0::get_last_block)
+            .service(api::v0::get_block_headers)
+            .service(api::v0::get_shard)
+            .service(api::v0::get_chunk);
         App::new()
             .app_data(web::Data::new(AppState {
                 redis_client: redis_client.clone(),
@@ -100,10 +105,10 @@ async fn main() -> std::io::Result<()> {
             ))
             .wrap(tracing_actix_web::TracingLogger::default())
             .service(api::health)
-            .service(api_v0_scope())
-            .route("/", web::get().to(serve_index))
-            .route("/skill.md", web::get().to(serve_skill))
-            .route("/SKILL.md", web::get().to(serve_skill))
+            .service(api_v0)
+            .route("/", web::get().to(greet))
+            .route("/skill.md", web::get().to(skill))
+            .route("/SKILL.md", web::get().to(skill))
     })
     .bind(format!("127.0.0.1:{}", env::var("PORT").unwrap()))?
     .run()

@@ -3,7 +3,7 @@ use crate::reader::read_blocks;
 use crate::types::*;
 use crate::*;
 use actix_web::http::header;
-use actix_web::{get, HttpRequest, HttpResponse, Responder, ResponseError};
+use actix_web::{get, web, HttpRequest, HttpResponse, Responder, ResponseError};
 use reqwest::header::HeaderName;
 use std::fmt;
 use std::str::FromStr;
