@@ -12,6 +12,19 @@ FASTNEAR provides servers for both mainnet and testnet:
 - Mainnet: [https://mainnet.neardata.xyz](https://mainnet.neardata.xyz)
 - Testnet: [https://testnet.neardata.xyz](https://testnet.neardata.xyz)
 
+## OpenAPI Generation
+
+The checked-in `openapi/openapi.yaml` file is generated from small typed DTOs plus a Rust-owned operation registry.
+
+```bash
+cargo run --features openapi --bin generate-openapi
+cargo run --features openapi --bin generate-openapi -- --check
+```
+
+The docs pipeline is:
+
+`neardata-server` generator -> checked-in `openapi/openapi.yaml` -> `mike-docs` split + sync -> `builder-docs` direct docs runtime
+
 ## API
 
 The server provides the following endpoints:
@@ -42,7 +55,7 @@ To increase your rate limits, get a subscription at [https://fastnear.com/](http
 
 ### Authentication
 
-To authenticate your requests with a FastNear Subscription API key, attach the following query string to the URL:
+To authenticate your requests with a FastNEAR Subscription API key, attach the following query string to the URL:
 
 ```
 ?apiKey={API_KEY}
@@ -52,6 +65,8 @@ For example:
 ```
 https://mainnet.neardata.xyz/v0/block/98765432?apiKey=YOUR_API_KEY
 ```
+
+Invalid API keys may return `401 Unauthorized` before the request reaches the neardata application itself.
 
 > **Note:** Authentication using the `Authorization: Bearer` header requires you to manually handle redirects, since the redirect URL will not pass the header through and the redirected request will not be authenticated.
 
@@ -79,6 +94,7 @@ Returns the block by block height.
 - If the block doesn't exist it returns `null`.
 - If the block is not produced yet, but close to the current finalized block, the server will wait for the block to be
   produced and return it.
+- Depending on deployment topology, this route may redirect to the host that owns the canonical archive range for the requested block.
 - The difference from NEAR Lake data is each block is served as a single JSON object, instead of the block and shards.
   Another benefit, is we include the `tx_hash` for every receipt in the `receipt_execution_outcomes`. The `tx_hash` is
   the hash of the transaction that produced the receipt.
@@ -93,7 +109,7 @@ Example:
 
 #### `v0/block/:block_height/headers`
 
-Returns a smaller part from the response including only the `block` part of the JSON object.
+Returns a smaller part from the response including only the `block` object from the JSON document.
 
 Example:
 
@@ -131,7 +147,7 @@ Example:
 
 Returns the optimistic block by block height.
 
-If the block is relatively old it will be redirected to the finalized block.
+If the deployment cannot serve the requested optimistic block directly, it may redirect to a canonical finalized or archive URL.
 
 #### `/v0/last_block/final`
 
@@ -185,4 +201,3 @@ cargo run
 - `READ_PATH` - The path to the directory with the block files.
 - `SAVE_EVERY_N` - The number of blocks to save in the cache before saving to the disk.
 - `GENESIS_BLOCK_HEIGHT` - The block height of the genesis block.
-

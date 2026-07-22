@@ -1,64 +1,13 @@
-mod api;
-mod cache;
-mod reader;
-mod types;
-
 use dotenv::dotenv;
 use std::env;
 
-use crate::types::{BlockHeight, ChainId};
 use actix_cors::Cors;
 use actix_web::http::header;
-use actix_web::{get, middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{middleware, web, App, HttpServer};
+use neardata_server::api;
+use neardata_server::types::{BlockHeight, ChainId};
+use neardata_server::{greet, skill, AppState, ArchiveConfig, ReadConfig};
 use tracing_subscriber::EnvFilter;
-
-pub static INDEX_HTML: &str = include_str!("../static/index.html");
-pub static SKILL_MD: &str = include_str!("../static/skill.md");
-
-#[derive(Clone)]
-pub struct ReadConfig {
-    pub path: String,
-    pub save_every_n: u64,
-}
-
-#[derive(Clone)]
-pub struct ArchiveConfig {
-    pub archive_boundaries: Vec<BlockHeight>,
-    pub domain_name: String,
-    /// The index of the archive boundary that this node is responsible for.
-    /// E.g. If there are 2 boundaries:
-    /// - `0` -> means from genesis to the first archive boundary (exclusive).
-    /// - `1` -> means from the first archive boundary to the second archive boundary (exclusive).
-    /// - `2` -> means from the second archive boundary to the blockchain head.
-    pub archive_index: usize,
-}
-
-#[derive(Clone)]
-pub struct AppState {
-    pub redis_client: redis::Client,
-    pub read_config: Option<ReadConfig>,
-    pub chain_id: ChainId,
-    pub genesis_block_height: BlockHeight,
-    /// Whether this node has the latest blocks and uses archive files.
-    /// If not, it means this is an archive node.
-    pub is_latest: bool,
-    /// Whether this node has the freshest blocks, but doesn't use archive files
-    pub is_fresh: bool,
-    pub archive_config: Option<ArchiveConfig>,
-    pub max_healthy_latency_ms: u128,
-}
-
-async fn greet() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(INDEX_HTML)
-}
-
-async fn skill() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/markdown; charset=utf-8")
-        .body(SKILL_MD)
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
