@@ -198,6 +198,103 @@ cargo run
 - `PORT` - The port the server will listen on.
 - `CHAIN_ID` - The chain ID, either `mainnet` or `testnet`.
 - `REDIS_URL` - The Redis URL for caching.
-- `READ_PATH` - The path to the directory with the block files.
+- `READ_PATH` - The path to the directory with the block files. If unset, the node
+  serves no blocks from disk and redirects cache misses to the archive node that does.
 - `SAVE_EVERY_N` - The number of blocks to save in the cache before saving to the disk.
 - `GENESIS_BLOCK_HEIGHT` - The block height of the genesis block.
+- `MAX_HEALTHY_LATENCY_MS` - How far behind the chain the latest final block may be
+  before `/health` reports `unhealthy`.
+
+Deployment topology:
+
+- `IS_LATEST` - Whether this node carries the latest blocks and uses archive files.
+  Defaults to `true` when unset. `false` means this is an archive node.
+- `IS_FRESH` - Whether this node carries the freshest blocks and owns the optimistic
+  tip. Defaults to `true` when unset.
+- `ARCHIVE_BOUNDARIES` - Comma-separated block heights splitting the chain between
+  archive nodes. Its presence enables archive routing.
+- `ARCHIVE_INDEX` - Which of those ranges this node owns. `0` is genesis up to the
+  first boundary; `N` is from the last boundary to the chain head.
+- `DOMAIN_NAME` - The fleet domain that redirects are built against, e.g.
+  `mainnet.neardata.xyz` produces `https://a2.mainnet.neardata.xyz/...`.
+
+Metrics (see below):
+
+- `METRICS_POLL_INTERVAL_MS` - How often the chain tip is sampled. Default `2000`.
+- `METRICS_POLL_TIMEOUT_MS` - Deadline for one sampling cycle. Default `4000`.
+
+## Metrics
+
+`GET /metrics` serves Prometheus text exposition format. There is no separate
+metrics port: the server binds to `127.0.0.1` only, so whatever reverse proxy
+fronts it decides who can reach the endpoint. It exposes tip heights, request
+rates and the archive topology, so restrict it there if you would rather it not
+be public.
+
+```yaml
+scrape_configs:
+  - job_name: neardata
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["a0.mainnet.neardata.xyz:3005", "mainnet.neardata.xyz:3005"]
+```
+
+A starter Grafana dashboard is checked in at `grafana/neardata-dashboard.json`.
+
+### What is exposed
+
+| Family | Notes |
+| --- | --- |
+| `neardata_chain_tip_*`, `neardata_chain_blocks_seen_total`, `neardata_chain_finality_lag_blocks`, `neardata_healthy` | How far behind the chain this node is. **Fresh nodes only** - see below. |
+| `neardata_tip_poll_*`, `neardata_tip_full_fetch_total` | Whether the sampler that feeds those gauges is still working. |
+| `neardata_http_*` | Request rate, duration, in-flight count and response size, labelled by matched route pattern. |
+| `neardata_redis_*` | Redis command rate, duration and failed attempts by logical operation, for the request path only. The tip sampler runs its own connection and reports under `neardata_tip_poll_*`, so do not size Redis load from these alone. |
+| `neardata_block_lookup_total`, `neardata_block_wait_duration_seconds` | How block requests were served: cache hit, archive read, or blocked waiting for a not-yet-produced block. |
+| `neardata_archive_*`, `neardata_cache_block_writes_total` | Local `.tgz` read latency, hit/miss, read-lock contention and cache backfill. |
+| `neardata_redirects_total`, `neardata_block_errors_total`, `neardata_service_errors_total`, `neardata_health_checks_total` | Why responses were redirects or errors. |
+| `neardata_build_info`, `neardata_genesis_block_height`, `neardata_max_healthy_latency_seconds` | Static facts about this instance and its configuration. |
+| `process_*` | CPU, RSS and file descriptors. Linux only. |
+
+Labels are deliberately bounded: routes are reported as their pattern
+(`/v0/block{finality:(_opt)?}/{block_height}`), never as the requested path, and
+unrouted requests all collapse into a single `<unmatched>` series. Unrecognised
+HTTP methods collapse into `method="OTHER"` for the same reason.
+
+One consequence worth knowing: because the route pattern covers both spellings,
+`/v0/block/N` and `/v0/block_opt/N` share a single `neardata_http_*` series, so
+optimistic and final traffic cannot be separated there. Split them with
+`neardata_block_lookup_total{finality}` instead, which carries the finality
+label. Adding one to the HTTP histograms would double their series count for
+little gain.
+
+### Archive nodes expose no chain tip metrics
+
+An archive node (`IS_LATEST=false` and `IS_FRESH=false`) does not follow the chain
+head, so it runs no tip poller and the whole `neardata_chain_tip_*` family is
+**absent** from its scrape rather than reported as zero. Likewise, only a node
+with `IS_FRESH=true` owns an optimistic tip, so `finality="optimistic"` series
+appear only there. Write dashboard queries with `absent()` or `or vector(0)`
+rather than assuming a series exists.
+
+### Alerting on staleness
+
+Alert on the block timestamp, not on the latency gauge:
+
+```promql
+time() - neardata_chain_tip_block_timestamp_seconds{finality="final"} > 15
+```
+
+`neardata_chain_tip_latency_seconds` is computed when the tip is sampled, so if
+the poller itself dies it freezes at whatever healthy-looking value it last had.
+The expression above keeps rising in that case, because `time()` advances against
+a frozen timestamp. `neardata_chain_tip_updated_timestamp_seconds` is the direct
+check on poller liveness, and `neardata_tip_poll_total{result!="ok"}` says why it
+is failing.
+
+Those two separate the two ways the tip can go stale:
+`neardata_chain_head_stall_seconds` rising means the chain is not moving, while
+poller lag rising means this server has stopped looking. Both freeze the tip
+gauges, and they need different people woken up.
+
+The same caveat applies to `neardata_healthy`, which is set by the poller.
+`/health` remains the live probe: it reads Redis on every request.

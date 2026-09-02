@@ -92,6 +92,17 @@ pub enum BlockErrorType {
     BlockDoesNotExist,
 }
 
+impl BlockErrorType {
+    /// The same string the `type` field serializes to, reused as a metric label.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BlockErrorType::BlockHeightTooHigh => "BLOCK_HEIGHT_TOO_HIGH",
+            BlockErrorType::BlockHeightTooLow => "BLOCK_HEIGHT_TOO_LOW",
+            BlockErrorType::BlockDoesNotExist => "BLOCK_DOES_NOT_EXIST",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -108,6 +119,21 @@ mod tests {
             serde_json::to_value(response).unwrap(),
             json!({ "status": "ok" })
         );
+    }
+
+    #[test]
+    fn block_error_type_metric_label_matches_the_serialized_value() {
+        // The metric label and the JSON `type` field must not drift apart.
+        for error_type in [
+            BlockErrorType::BlockHeightTooHigh,
+            BlockErrorType::BlockHeightTooLow,
+            BlockErrorType::BlockDoesNotExist,
+        ] {
+            assert_eq!(
+                serde_json::to_value(&error_type).unwrap(),
+                json!(error_type.as_str())
+            );
+        }
     }
 
     #[test]

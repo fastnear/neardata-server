@@ -44,19 +44,24 @@ pub fn read_blocks(
 }
 
 fn read_archive(path: &str) -> HashMap<String, String> {
+    let started = std::time::Instant::now();
     if !std::path::Path::new(path).exists() {
         tracing::error!(target: TARGET, "File not found: {}", path);
+        metrics::record_archive_read(false, started.elapsed(), 0);
         return HashMap::new();
     }
-    tar::Archive::new(GzDecoder::new(std::fs::File::open(path).unwrap()))
-        .entries()
-        .unwrap()
-        .filter_map(|e| e.ok())
-        .map(|mut e| {
-            let path = e.path().unwrap().to_string_lossy().to_string();
-            let mut content = String::new();
-            e.read_to_string(&mut content).unwrap();
-            (path, content)
-        })
-        .collect()
+    let blocks: HashMap<String, String> =
+        tar::Archive::new(GzDecoder::new(std::fs::File::open(path).unwrap()))
+            .entries()
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|mut e| {
+                let path = e.path().unwrap().to_string_lossy().to_string();
+                let mut content = String::new();
+                e.read_to_string(&mut content).unwrap();
+                (path, content)
+            })
+            .collect();
+    metrics::record_archive_read(true, started.elapsed(), blocks.len() as u64);
+    blocks
 }

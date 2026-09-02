@@ -1,5 +1,6 @@
 pub mod api;
 pub mod cache;
+pub mod metrics;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 pub mod reader;

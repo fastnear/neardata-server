@@ -15,6 +15,8 @@ const EXPECTED_CACHED_BLOCKS: BlockHeight = 10;
 // 1 year cache for blocks. Blocks don't change.
 const DEFAULT_CACHE_DURATION: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 const MAX_WAIT_BLOCKS: BlockHeight = 10;
+// Blocks and the errors about them are immutable, so they get a long browser cache.
+const DAY_SECONDS: u64 = 24 * 60 * 60;
 
 #[derive(Debug)]
 enum ServiceError {
@@ -45,8 +47,22 @@ impl fmt::Display for ServiceError {
     }
 }
 
+impl ServiceError {
+    /// Stable label value for `neardata_service_errors_total{kind}`.
+    fn metric_kind(&self) -> &'static str {
+        match *self {
+            ServiceError::ArgumentError => "argument",
+            ServiceError::CacheError(_) => "cache",
+            ServiceError::InternalDataError => "internal_data",
+        }
+    }
+}
+
 impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
+        // Every error response funnels through here, so it is the one place that
+        // needs to count them.
+        metrics::record_service_error(self.metric_kind());
         match *self {
             ServiceError::ArgumentError => HttpResponse::BadRequest().json("Invalid argument"),
             ServiceError::CacheError(ref err) => {
@@ -74,6 +90,41 @@ fn arg_finality(request: &HttpRequest) -> Finality {
     } else {
         Finality::Final
     }
+}
+
+/// Builds a 302 and counts it under `kind`.
+///
+/// Every redirect in this file goes through here so the counter can't drift out
+/// of sync with the responses.
+fn redirect(kind: &'static str, cache_max_age: Option<u64>, location: String) -> HttpResponse {
+    metrics::record_redirect(kind);
+    let mut response = HttpResponse::Found();
+    if let Some(max_age) = cache_max_age {
+        response.append_header((
+            header::CACHE_CONTROL,
+            format!("public, max-age={}", max_age),
+        ));
+    }
+    response
+        .append_header((header::LOCATION, location))
+        .finish()
+}
+
+/// Builds a 404 carrying a `BlockErrorResponse` and counts it by error type.
+fn block_error_response(
+    error: &str,
+    error_type: BlockErrorType,
+    cache_max_age: Option<u64>,
+) -> HttpResponse {
+    metrics::record_block_error(error_type.as_str());
+    let mut response = HttpResponse::NotFound();
+    if let Some(max_age) = cache_max_age {
+        response.append_header((
+            header::CACHE_CONTROL,
+            format!("public, max-age={}", max_age),
+        ));
+    }
+    response.json(BlockErrorResponse::new(error, error_type))
 }
 
 fn header(http_response: &HttpResponse, name: HeaderName) -> Option<String> {
@@ -115,17 +166,16 @@ pub mod v0 {
         };
         if !app_state.is_fresh {
             // Redirect to the fresh url
-            return Ok(HttpResponse::Found()
-                .append_header((
-                    header::LOCATION,
-                    format!(
-                        "https://{}/v0/last_block/{}{}",
-                        app_state.archive_config.as_ref().unwrap().domain_name,
-                        finality,
-                        suffix
-                    ),
-                ))
-                .finish());
+            return Ok(redirect(
+                "last_block_upstream",
+                None,
+                format!(
+                    "https://{}/v0/last_block/{}{}",
+                    app_state.archive_config.as_ref().unwrap().domain_name,
+                    finality,
+                    suffix
+                ),
+            ));
         }
 
         tracing::debug!(target: TARGET_API, "Retrieving the last block for finality {}", finality);
@@ -138,17 +188,16 @@ pub mod v0 {
                         "The last block height is missing from the cache".to_string(),
                     )
                 })?;
-        Ok(HttpResponse::Found()
-            .append_header((
-                header::LOCATION,
-                format!(
-                    "/v0/block{}/{}{}",
-                    finality_suffix(finality),
-                    last_block_height,
-                    suffix
-                ),
-            ))
-            .finish())
+        Ok(redirect(
+            "last_block_local",
+            None,
+            format!(
+                "/v0/block{}/{}{}",
+                finality_suffix(finality),
+                last_block_height,
+                suffix
+            ),
+        ))
     }
 
     #[get("/first_block")]
@@ -166,31 +215,21 @@ pub mod v0 {
         if let Some(archive_config) = &app_state.archive_config {
             // Redirect to archive
             if archive_config.archive_index != 0 {
-                return Ok(HttpResponse::Found()
-                    .append_header((
-                        header::CACHE_CONTROL,
-                        format!("public, max-age={}", 24 * 60 * 60),
-                    ))
-                    .append_header((
-                        header::LOCATION,
-                        format!(
-                            "https://a0.{}/v0/block/{}{}",
-                            archive_config.domain_name, app_state.genesis_block_height, suffix
-                        ),
-                    ))
-                    .finish());
+                return Ok(redirect(
+                    "first_block_archive",
+                    Some(DAY_SECONDS),
+                    format!(
+                        "https://a0.{}/v0/block/{}{}",
+                        archive_config.domain_name, app_state.genesis_block_height, suffix
+                    ),
+                ));
             }
         }
-        Ok(HttpResponse::Found()
-            .append_header((
-                header::CACHE_CONTROL,
-                format!("public, max-age={}", 24 * 60 * 60),
-            ))
-            .append_header((
-                header::LOCATION,
-                format!("/v0/block/{}{}", app_state.genesis_block_height, suffix),
-            ))
-            .finish())
+        Ok(redirect(
+            "first_block_local",
+            Some(DAY_SECONDS),
+            format!("/v0/block/{}{}", app_state.genesis_block_height, suffix),
+        ))
     }
 
     #[get("/block{finality:(_opt)?}/{block_height}")]
@@ -400,30 +439,18 @@ pub mod v0 {
         app_state: &web::Data<AppState>,
     ) -> Option<HttpResponse> {
         if block_height > MAX_BLOCK_HEIGHT {
-            return Some(
-                HttpResponse::NotFound()
-                    .append_header((
-                        header::CACHE_CONTROL,
-                        format!("public, max-age={}", 24 * 60 * 60),
-                    ))
-                    .json(BlockErrorResponse::new(
-                        "Block height is too high",
-                        BlockErrorType::BlockHeightTooHigh,
-                    )),
-            );
+            return Some(block_error_response(
+                "Block height is too high",
+                BlockErrorType::BlockHeightTooHigh,
+                Some(DAY_SECONDS),
+            ));
         }
         if block_height < app_state.genesis_block_height {
-            return Some(
-                HttpResponse::NotFound()
-                    .append_header((
-                        header::CACHE_CONTROL,
-                        format!("public, max-age={}", 24 * 60 * 60),
-                    ))
-                    .json(BlockErrorResponse::new(
-                        "Block height is before the genesis",
-                        BlockErrorType::BlockHeightTooLow,
-                    )),
-            );
+            return Some(block_error_response(
+                "Block height is before the genesis",
+                BlockErrorType::BlockHeightTooLow,
+                Some(DAY_SECONDS),
+            ));
         }
         None
     }
@@ -447,23 +474,16 @@ pub mod v0 {
         if let Some(archive_config) = &app_state.archive_config {
             if !app_state.is_fresh && finality == Finality::Optimistic {
                 // Redirect to the fresh server
-                return Some(
-                    HttpResponse::Found()
-                        .append_header((
-                            header::CACHE_CONTROL,
-                            format!("public, max-age={}", 24 * 60 * 60),
-                        ))
-                        .append_header((
-                            header::LOCATION,
-                            format!(
-                                "https://{}/v0/block{}/{}",
-                                archive_config.domain_name,
-                                finality_suffix(finality),
-                                block_height
-                            ),
-                        ))
-                        .finish(),
-                );
+                return Some(redirect(
+                    "optimistic_to_fresh",
+                    Some(DAY_SECONDS),
+                    format!(
+                        "https://{}/v0/block{}/{}",
+                        archive_config.domain_name,
+                        finality_suffix(finality),
+                        block_height
+                    ),
+                ));
             }
             // Find the required archive index
             let index = archive_config
@@ -472,21 +492,14 @@ pub mod v0 {
                 .position(|&x| block_height < x)
                 .unwrap_or(archive_config.archive_boundaries.len());
             if index != archive_config.archive_index {
-                return Some(
-                    HttpResponse::Found()
-                        .append_header((
-                            header::CACHE_CONTROL,
-                            format!("public, max-age={}", 24 * 60 * 60),
-                        ))
-                        .append_header((
-                            header::LOCATION,
-                            format!(
-                                "https://a{}.{}/v0/block/{}",
-                                index, archive_config.domain_name, block_height
-                            ),
-                        ))
-                        .finish(),
-                );
+                return Some(redirect(
+                    "archive_range",
+                    Some(DAY_SECONDS),
+                    format!(
+                        "https://a{}.{}/v0/block/{}",
+                        index, archive_config.domain_name, block_height
+                    ),
+                ));
             }
         }
         None
@@ -519,8 +532,12 @@ pub mod v0 {
             )
             .await?
             {
-                (Some(block), _) => return Ok(BlockOrResponse::Block(block)),
+                (Some(block), _) => {
+                    metrics::record_block_lookup(finality, "cache_hit");
+                    return Ok(BlockOrResponse::Block(block));
+                }
                 (_, None) => {
+                    metrics::record_block_lookup(finality, "tip_missing");
                     return Err(ServiceError::CacheError(
                         "The last block height is missing from the cache".to_string(),
                     ));
@@ -564,27 +581,32 @@ pub mod v0 {
     ) -> Result<Option<BlockOrResponse>, ServiceError> {
         if app_state.is_latest {
             if block_height > last_block_height + MAX_WAIT_BLOCKS {
-                return Ok(Some(BlockOrResponse::Response(
-                    HttpResponse::NotFound().json(BlockErrorResponse::new(
-                        "The block is too far in the future",
-                        BlockErrorType::BlockDoesNotExist,
-                    )),
-                )));
+                metrics::record_block_lookup(finality, "too_far_future");
+                return Ok(Some(BlockOrResponse::Response(block_error_response(
+                    "The block is too far in the future",
+                    BlockErrorType::BlockDoesNotExist,
+                    None,
+                ))));
             }
 
             if block_height > last_block_height {
-                cache::wait_for_block(
+                let started = std::time::Instant::now();
+                let waited = cache::wait_for_block(
                     app_state.redis_client.clone(),
                     chain_id,
                     block_height,
                     finality,
                     Duration::from_millis(1000 * (block_height - last_block_height + 1)),
                 )
-                .await?;
+                .await;
+                metrics::record_block_wait(finality, started.elapsed());
+                waited?;
+                metrics::record_block_lookup(finality, "wait_retry");
                 return Ok(None);
             }
 
             if block_height > last_block_height.saturating_sub(EXPECTED_CACHED_BLOCKS) {
+                metrics::record_block_lookup(finality, "not_cached");
                 return Err(ServiceError::CacheError(
                     "The block is not cached".to_string(),
                 ));
@@ -592,15 +614,11 @@ pub mod v0 {
         }
 
         if finality == Finality::Optimistic {
-            return Ok(Some(BlockOrResponse::Response(
-                HttpResponse::Found()
-                    .append_header((
-                        header::CACHE_CONTROL,
-                        format!("public, max-age={}", 24 * 60 * 60),
-                    ))
-                    .append_header((header::LOCATION, format!("/v0/block/{}", block_height)))
-                    .finish(),
-            )));
+            return Ok(Some(BlockOrResponse::Response(redirect(
+                "optimistic_to_final",
+                Some(DAY_SECONDS),
+                format!("/v0/block/{}", block_height),
+            ))));
         }
 
         // If the read-path is not set, it means the server doesn't use archive files.
@@ -610,23 +628,16 @@ pub mod v0 {
                 .archive_config
                 .as_ref()
                 .expect("Missing archive config without local files config");
-            return Ok(Some(BlockOrResponse::Response(
-                HttpResponse::Found()
-                    .append_header((
-                        header::CACHE_CONTROL,
-                        format!("public, max-age={}", 24 * 60 * 60),
-                    ))
-                    .append_header((
-                        header::LOCATION,
-                        format!(
-                            "https://a{}.{}/v0/block/{}",
-                            archive_config.archive_boundaries.len(),
-                            archive_config.domain_name,
-                            block_height
-                        ),
-                    ))
-                    .finish(),
-            )));
+            return Ok(Some(BlockOrResponse::Response(redirect(
+                "archive_no_files",
+                Some(DAY_SECONDS),
+                format!(
+                    "https://a{}.{}/v0/block/{}",
+                    archive_config.archive_boundaries.len(),
+                    archive_config.domain_name,
+                    block_height
+                ),
+            ))));
         }
 
         // Before reading blocks we'll check the last time the archive was accessed and
@@ -637,10 +648,21 @@ pub mod v0 {
             block_height,
         );
         let should_read =
-            cache::acquire_archive_read_attempt(app_state.redis_client.clone(), &archive_fn)
-                .await?;
+            match cache::acquire_archive_read_attempt(app_state.redis_client.clone(), &archive_fn)
+                .await
+            {
+                Ok(acquired) => {
+                    metrics::record_archive_lock(if acquired { "acquired" } else { "contended" });
+                    acquired
+                }
+                Err(err) => {
+                    metrics::record_archive_lock("error");
+                    return Err(err.into());
+                }
+            };
 
         if !should_read {
+            metrics::record_block_lookup(finality, "lock_contended");
             tokio::time::sleep(Duration::from_millis(100)).await;
             return Ok(None);
         }
@@ -661,6 +683,7 @@ pub mod v0 {
             })
             .unwrap();
         set_multiple_blocks_async(app_state.redis_client.clone(), chain_id, finality, blocks);
+        metrics::record_block_lookup(finality, "archive_read");
         Ok(Some(BlockOrResponse::Block(block)))
     }
 }
@@ -668,55 +691,46 @@ pub mod v0 {
 #[get("/health")]
 pub async fn health(app_state: web::Data<AppState>) -> Result<impl Responder, ServiceError> {
     if !app_state.is_latest {
+        metrics::record_health_check("ok");
         return Ok(HttpResponse::Ok().json(HealthResponse {
             status: "ok".to_string(),
         }));
     }
-    let chain_id = app_state.chain_id;
-    let finality = Finality::Final;
-    let block_height =
-        cache::get_last_block_height(app_state.redis_client.clone(), chain_id, finality)
-            .await
-            .ok_or_else(|| {
-                ServiceError::CacheError(
-                    "The last block height is missing from the cache".to_string(),
-                )
-            })?;
-    match cache::get_block_and_last_block_height(
+    // A live redis read rather than the metrics gauges: this is a load balancer
+    // probe, so it should keep exercising the real dependency. It fetches only
+    // the first couple of KiB of the tip block, which is where the header
+    // timestamp lives.
+    let observation = cache::get_tip_observation(
         app_state.redis_client.clone(),
-        chain_id,
-        block_height,
-        finality,
+        app_state.chain_id,
+        Finality::Final,
     )
-    .await?
-    {
-        (Some(block), _) => {
-            let block: serde_json::Value = serde_json::from_str(&block)
-                .map_err(|_| ServiceError::CacheError("Failed to parse the block".to_string()))?;
-            let timestamp = block["block"]["header"]["timestamp_nanosec"]
-                .as_str()
-                .ok_or_else(|| {
-                    ServiceError::CacheError("The block is missing a timestamp".to_string())
-                })?;
-            let t_nano = timestamp.parse::<u128>().unwrap_or(0);
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default();
-            let sync_latency_ms = now.as_nanos().saturating_sub(t_nano) / 1_000_000;
-            if sync_latency_ms > app_state.max_healthy_latency_ms {
-                return Ok(HttpResponse::Ok().json(HealthResponse {
-                    status: "unhealthy".to_string(),
-                }));
+    .await
+    .map_err(|err| {
+        metrics::record_health_check("error");
+        match err {
+            cache::TipError::TipMissing => ServiceError::CacheError(
+                "The last block height is missing from the cache".to_string(),
+            ),
+            cache::TipError::BlockMissing => {
+                ServiceError::CacheError("The block is not cached".to_string())
             }
+            cache::TipError::ParseError => {
+                ServiceError::CacheError("The block is missing a timestamp".to_string())
+            }
+            cache::TipError::Redis(err) => ServiceError::from(err),
         }
-        _ => {
-            return Err(ServiceError::CacheError(
-                "The block is not cached".to_string(),
-            ));
-        }
-    }
+    })?;
+
+    let sync_latency_ms = cache::latency_ms_from_nanos(observation.timestamp_nanos);
+    let status = if sync_latency_ms > app_state.max_healthy_latency_ms {
+        "unhealthy"
+    } else {
+        "ok"
+    };
+    metrics::record_health_check(status);
 
     Ok(HttpResponse::Ok().json(HealthResponse {
-        status: "ok".to_string(),
+        status: status.to_string(),
     }))
 }

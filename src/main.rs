@@ -1,13 +1,29 @@
 use dotenv::dotenv;
 use std::env;
+use std::time::Duration;
 
 use actix_cors::Cors;
 use actix_web::http::header;
 use actix_web::{middleware, web, App, HttpServer};
-use neardata_server::api;
 use neardata_server::types::{BlockHeight, ChainId};
+use neardata_server::{api, metrics};
 use neardata_server::{greet, skill, AppState, ArchiveConfig, ReadConfig};
 use tracing_subscriber::EnvFilter;
+
+const DEFAULT_METRICS_POLL_INTERVAL_MS: u64 = 2000;
+const DEFAULT_METRICS_POLL_TIMEOUT_MS: u64 = 4000;
+
+fn env_duration_ms(name: &str, default_ms: u64) -> Duration {
+    let millis = env::var(name)
+        .ok()
+        .map(|value| {
+            value
+                .parse()
+                .unwrap_or_else(|_| panic!("Failed to parse {}", name))
+        })
+        .unwrap_or(default_ms);
+    Duration::from_millis(millis)
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -68,6 +84,33 @@ async fn main() -> std::io::Result<()> {
         .parse()
         .expect("Failed to parse MAX_HEALTHY_LATENCY_MS");
 
+    let app_state = AppState {
+        redis_client: redis_client.clone(),
+        read_config,
+        chain_id,
+        genesis_block_height,
+        is_latest,
+        is_fresh,
+        archive_config,
+        max_healthy_latency_ms,
+    };
+
+    metrics::init(&app_state);
+    // Spawned out here rather than in the factory closure below: that closure runs
+    // once per worker thread, which would give us one poller per worker. Archive
+    // nodes don't follow the chain head, so they get no poller and, by extension,
+    // no chain tip metrics at all.
+    if metrics::tracks_chain_head(&app_state) {
+        metrics::spawn_tip_poller(metrics::TipPollerConfig {
+            redis_client,
+            chain_id,
+            poll_optimistic: is_fresh,
+            max_healthy_latency_ms,
+            interval: env_duration_ms("METRICS_POLL_INTERVAL_MS", DEFAULT_METRICS_POLL_INTERVAL_MS),
+            timeout: env_duration_ms("METRICS_POLL_TIMEOUT_MS", DEFAULT_METRICS_POLL_TIMEOUT_MS),
+        });
+    }
+
     HttpServer::new(move || {
         // Configure CORS middleware
         let cors = Cors::default()
@@ -89,22 +132,17 @@ async fn main() -> std::io::Result<()> {
             .service(api::v0::get_shard)
             .service(api::v0::get_chunk);
         App::new()
-            .app_data(web::Data::new(AppState {
-                redis_client: redis_client.clone(),
-                read_config: read_config.clone(),
-                chain_id,
-                genesis_block_height,
-                is_latest,
-                is_fresh,
-                archive_config: archive_config.clone(),
-                max_healthy_latency_ms,
-            }))
+            .app_data(web::Data::new(app_state.clone()))
             .wrap(cors)
             .wrap(middleware::Logger::new(
                 "%{r}a \"%r\"	%s %b \"%{Referer}i\" \"%{User-Agent}i\" %T",
             ))
             .wrap(tracing_actix_web::TracingLogger::default())
+            // Registered last, so it wraps everything above and measures the true
+            // end-to-end time a client sees.
+            .wrap(middleware::from_fn(metrics::http_metrics))
             .service(api::health)
+            .service(metrics::get_metrics)
             .service(api_v0)
             .route("/", web::get().to(greet))
             .route("/skill.md", web::get().to(skill))
